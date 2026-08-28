@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { ArrowRight, Check, ChevronDown, Lock, Sparkles } from "lucide-react";
-import { burstFrom, prefersReducedMotion } from "../lib/confetti";
+import { burstFrom } from "../lib/confetti";
 import { Reveal } from "../lib/motion";
 
 const ACTIVITY: { text: string; tag?: string; tone?: "emerald" | "amber" }[] = [
@@ -33,16 +33,12 @@ function ActivityItem({ text, tag, tone }: (typeof ACTIVITY)[number]) {
   );
 }
 
-export default function Hero() {
+export default function Hero({ onEnter }: { onEnter: () => void }) {
   const ctaRef = useRef<HTMLButtonElement>(null);
 
   const handleCta = () => {
     if (ctaRef.current) burstFrom(ctaRef.current);
-    window.setTimeout(() => {
-      document.getElementById("demo")?.scrollIntoView({
-        behavior: prefersReducedMotion() ? "auto" : "smooth",
-      });
-    }, 650);
+    window.setTimeout(onEnter, 700);
   };
 
   return (

@@ -5,12 +5,13 @@ import { Reveal } from "../lib/motion";
 
 const ASSURANCES = ["No credit card", "Free for 5 projects", "2-minute setup"];
 
-export default function FinalCta() {
+export default function FinalCta({ onEnter }: { onEnter: () => void }) {
   const btnRef = useRef<HTMLButtonElement>(null);
 
   const celebrate = () => {
     if (btnRef.current) burstFrom(btnRef.current);
     cannons();
+    window.setTimeout(onEnter, 1100);
   };
 
   return (

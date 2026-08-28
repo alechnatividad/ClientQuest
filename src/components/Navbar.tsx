@@ -52,13 +52,14 @@ export default function Navbar({ onEnter }: { onEnter: () => void }) {
         </div>
 
         {/* Circular CTA */}
-        <a
-          href="#cta"
-          aria-label="Get started"
+        <button
+          onClick={onEnter}
+          aria-label="Open the client portal"
+          title="Open client portal"
           className="group grid h-11 w-11 place-items-center rounded-full border border-slate-700 bg-slate-800 text-slate-200 transition-all duration-300 hover:border-quest hover:bg-quest hover:text-white hover:shadow-lg hover:shadow-quest/40"
         >
           <ArrowUpRight className="h-5 w-5 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-        </a>
+        </button>
       </nav>
     </header>
   );
