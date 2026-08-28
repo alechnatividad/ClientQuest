@@ -344,7 +344,11 @@ grant select, insert, update, delete on public.workspaces        to service_role
 grant select, insert, update, delete on public.workspace_members to service_role;
 grant select, insert, update, delete on public.clients           to service_role;
 grant select, insert, update, delete on public.projects          to service_role;
-
+-- Defense in depth: anon receives no table privileges.
+revoke all on public.workspaces from anon;
+revoke all on public.workspace_members from anon;
+revoke all on public.clients from anon;
+revoke all on public.projects from anon;
 -- SECURITY DEFINER helpers: strip the default PUBLIC execute grant first,
 -- then explicitly allow authenticated callers only. Never exposed to anon.
 revoke execute on function public.is_workspace_member(uuid)  from public;
