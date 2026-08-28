@@ -28,6 +28,69 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/* ────────────────────────────────────────────────────────────────
+ * Secure auth return-path handling
+ *
+ * The path a visitor attempted (e.g. /app/projects/123) is recorded when
+ * RequireAuth bounces them to /login, then carried through Supabase via
+ * the /auth/callback route. Destinations are strictly whitelisted to
+ * internal /app paths — no open redirects.
+ * ──────────────────────────────────────────────────────────────── */
+
+const RETURN_TO_KEY = "clientquest:return-to";
+
+/**
+ * Allow only internal /app destinations. Rejects:
+ *  - anything not starting with "/app" (external URLs, other routes)
+ *  - lookalike prefixes like "/apple-something"
+ *  - protocol-relative ("//evil.com") and backslash tricks
+ */
+export function sanitizeReturnPath(candidate: string | null | undefined): string | null {
+  if (!candidate || typeof candidate !== "string") return null;
+  if (candidate.includes("\\") || candidate.includes("//")) return null;
+  if (!candidate.startsWith("/app")) return null;
+  const rest = candidate.slice(4);
+  if (rest !== "" && !rest.startsWith("/")) return null;
+  return candidate;
+}
+
+/** Record the attempted protected path (sanitized) for post-auth redirect. */
+export function rememberReturnTo(path: string): void {
+  const clean = sanitizeReturnPath(path);
+  if (!clean) return;
+  try {
+    sessionStorage.setItem(RETURN_TO_KEY, clean);
+  } catch {
+    /* storage unavailable — fall back to /app after auth */
+  }
+}
+
+/** Read (without consuming) the stored destination; used to build callback URLs. */
+export function peekStoredReturnTo(): string {
+  try {
+    return sanitizeReturnPath(sessionStorage.getItem(RETURN_TO_KEY)) ?? "/app";
+  } catch {
+    return "/app";
+  }
+}
+
+/** Consume the stored destination, defaulting to /app. */
+export function takeStoredReturnTo(): string {
+  try {
+    const stored = sessionStorage.getItem(RETURN_TO_KEY);
+    sessionStorage.removeItem(RETURN_TO_KEY);
+    return sanitizeReturnPath(stored) ?? "/app";
+  } catch {
+    return "/app";
+  }
+}
+
+/** /auth/callback URL carrying the sanitized internal destination. */
+export function buildAuthCallbackUrl(): string {
+  const returnTo = peekStoredReturnTo();
+  return `${window.location.origin}/auth/callback?return_to=${encodeURIComponent(returnTo)}`;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [initializing, setInitializing] = useState(true);
@@ -62,7 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!supabase) return { error: "Supabase is not configured on this deployment." };
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/app` },
+      options: { emailRedirectTo: buildAuthCallbackUrl() },
     });
     return { error: error?.message ?? null };
   }, []);
@@ -71,7 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!supabase) return { error: "Supabase is not configured on this deployment." };
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/app` },
+      options: { redirectTo: buildAuthCallbackUrl() },
     });
     return { error: error?.message ?? null };
   }, []);
