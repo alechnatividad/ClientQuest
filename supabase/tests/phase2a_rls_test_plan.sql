@@ -331,19 +331,22 @@ begin
 end $$;
 
 
-/* ── impersonate user A again for tests 12–15 ───────────────────────────── */
+/* ── impersonate user B for tests 12–13 ───────────────────────────────────
+   B is admin of workspace A AND owner of workspace B, so RLS permits the
+   UPDATE in both workspaces. Only the workspace_id guard trigger can stop
+   the tenant-boundary move — which is exactly what these tests prove. */
 reset role;
 set local role authenticated;
 select set_config(
   'request.jwt.claims',
-  '{"sub":"00000000-0000-0000-0000-0000000000aa","role":"authenticated","aud":"authenticated"}',
+  '{"sub":"00000000-0000-0000-0000-0000000000bb","role":"authenticated","aud":"authenticated"}',
   true
 );
 
 
 /* ── test 12: a client cannot be moved to another workspace ─────────────── */
--- A owns BOTH workspaces, so RLS would allow the update — only the guard can
--- stop a tenant-boundary move.
+-- Runs as user B (admin of A, owner of B): RLS allows the update in both
+-- workspaces, so only the guard trigger can reject the tenant-boundary move.
 do $$
 declare
   v_client uuid;
@@ -405,7 +408,22 @@ begin
 end $$;
 
 
+/* ── impersonate user C for tests 14–15 ───────────────────────────────────
+   C is a plain member of workspace A. Members may normally UPDATE clients
+   and projects, so only the created_by guard trigger can reject an
+   audit-field rewrite — which is exactly what these tests prove. */
+reset role;
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"00000000-0000-0000-0000-0000000000cc","role":"authenticated","aud":"authenticated"}',
+  true
+);
+
+
 /* ── test 14: a member cannot rewrite a client's created_by ─────────────── */
+-- Runs as user C, a plain member of workspace A: the members UPDATE policy
+-- passes, so only the created_by guard trigger can reject the rewrite.
 do $$
 declare
   v_client uuid;

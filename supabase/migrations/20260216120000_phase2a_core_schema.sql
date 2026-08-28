@@ -28,6 +28,8 @@
         projects.created_by
     - SECURITY DEFINER authorization helpers explicitly revoked from PUBLIC
       and granted to authenticated only (never anon)
+    - all four tables explicitly revoked from anon (defense in depth on top
+      of RLS — no table grant can leak to unauthenticated callers)
 
   SAFETY
     - Purely additive. Safe to run ONCE on a fresh ClientQuest Supabase project.
@@ -354,6 +356,14 @@ revoke execute on function public.can_manage_workspace(uuid) from public;
 grant execute on function public.is_workspace_member(uuid)  to authenticated;
 grant execute on function public.is_workspace_owner(uuid)   to authenticated;
 grant execute on function public.can_manage_workspace(uuid) to authenticated;
+
+-- Defense in depth: explicitly deny every table privilege to anon. RLS alone
+-- would already block unauthenticated access; these revokes guarantee that no
+-- table grant can ever leak through to the anon role.
+revoke all on public.workspaces        from anon;
+revoke all on public.workspace_members from anon;
+revoke all on public.clients           from anon;
+revoke all on public.projects          from anon;
 
 
 /* ── 8. row level security ─────────────────────────────────────────────────── */
