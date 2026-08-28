@@ -8,7 +8,7 @@ const LINKS = [
   { label: "Stories", href: "#stories" },
 ];
 
-export default function Navbar() {
+export default function Navbar({ onEnter }: { onEnter: () => void }) {
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
