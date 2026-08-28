@@ -1,27 +1,34 @@
 import { useRef } from "react";
-import { ArrowRight, Check, ChevronDown, Sparkles, Trophy, Zap } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, Lock, Sparkles } from "lucide-react";
 import { burstFrom, prefersReducedMotion } from "../lib/confetti";
 import { Reveal } from "../lib/motion";
 
-const ACTIVITY: { text: string; xp?: string; accent?: "emerald" | "amber" }[] = [
-  { text: "Mia approved “Homepage v2”", xp: "+120 XP" },
-  { text: "Atlas Co. reached Level 8", accent: "emerald" },
-  { text: "Quest shipped: Q3 impact report", xp: "+300 XP" },
-  { text: "New quest posted: Packaging concepts" },
-  { text: "Sam left 2 notes on “App onboarding”" },
-  { text: "Brew & Co. unlocked the “Fast Feedback” badge", accent: "emerald" },
-  { text: "Invoice #204 auto-sent on ship", xp: "+50 XP" },
+const ACTIVITY: { text: string; tag?: string; tone?: "emerald" | "amber" }[] = [
+  { text: "Atlas Co. approved “Homepage v2”", tag: "Approved", tone: "emerald" },
+  { text: "Round-trip feedback on “App onboarding”: 4h 12m" },
+  { text: "Scope locked on “Brand guidelines”", tag: "Locked", tone: "amber" },
+  { text: "Nimbus onboarded — 6 deliverables shared" },
+  { text: "Invoice #204 auto-sent on approval", tag: "Sent", tone: "emerald" },
+  { text: "Two revisions requested on “Packaging concepts”" },
+  { text: "Brew & Co. signed off — project 100% complete", tag: "Complete", tone: "emerald" },
 ];
 
-function ActivityItem({ text, xp, accent }: (typeof ACTIVITY)[number]) {
+function ActivityItem({ text, tag, tone }: (typeof ACTIVITY)[number]) {
   return (
     <span className="mr-10 flex shrink-0 items-center gap-3 whitespace-nowrap text-sm text-slate-400">
       <svg className="h-2 w-2 shrink-0 text-quest" viewBox="0 0 8 8" fill="currentColor" aria-hidden>
         <path d="M4 0L8 4L4 8L0 4Z" />
       </svg>
       {text}
-      {xp && <span className="font-semibold text-[#F59E0B]">{xp}</span>}
-      {!xp && accent === "emerald" && <span className="font-semibold text-[#10B981]">↑ leveled up</span>}
+      {tag && (
+        <span
+          className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+            tone === "amber" ? "bg-amber-400/10 text-[#F59E0B]" : "bg-emerald-400/10 text-[#10B981]"
+          }`}
+        >
+          {tag}
+        </span>
+      )}
     </span>
   );
 }
@@ -48,7 +55,7 @@ export default function Hero() {
         <div className="absolute left-[4%] top-1/2 h-56 w-56 rounded-full bg-quest/10 blur-[100px]" />
       </div>
 
-      {/* floating quest tickets */}
+      {/* floating approval cards */}
       <div aria-hidden className="pointer-events-none absolute inset-0 hidden lg:block">
         <div className="animate-float-slow absolute left-[57%] top-36 xl:left-[61%]">
           <div className="w-64 -rotate-3 rounded-2xl border border-slate-700/70 bg-slate-900/85 p-4 shadow-2xl shadow-black/50 backdrop-blur">
@@ -57,11 +64,11 @@ export default function Hero() {
                 <Check className="h-4 w-4" strokeWidth={2.5} />
               </span>
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-white">Brand refresh</p>
+                <p className="truncate text-sm font-semibold text-white">Homepage v2</p>
                 <p className="text-xs text-slate-500">Approved by Atlas Co.</p>
               </div>
-              <span className="ml-auto rounded-full bg-amber-400/10 px-2 py-0.5 text-[11px] font-bold text-[#F59E0B]">
-                +150 XP
+              <span className="ml-auto rounded-full bg-emerald-400/10 px-2 py-0.5 text-[11px] font-bold text-[#10B981]">
+                Approved
               </span>
             </div>
             <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-800">
@@ -74,20 +81,20 @@ export default function Hero() {
           <div className="w-60 rotate-3 rounded-2xl border border-quest/30 bg-slate-900/85 p-4 shadow-2xl shadow-black/50 backdrop-blur">
             <div className="flex items-center gap-3">
               <span className="grid h-9 w-9 place-items-center rounded-lg bg-quest/15 text-violet-300">
-                <Trophy className="h-4 w-4" />
+                <Lock className="h-4 w-4" />
               </span>
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-white">Level 7 unlocked</p>
-                <p className="text-xs text-slate-500">Nimbus · 2-week streak</p>
+                <p className="text-sm font-semibold text-white">Scope locked</p>
+                <p className="text-xs text-slate-500">Nimbus · Round 2 signed</p>
               </div>
             </div>
-            <p className="mt-3 text-xs font-medium text-violet-300/80">+900 XP this sprint</p>
+            <p className="mt-3 text-xs font-medium text-violet-300/80">Sign-off logged · v2 final</p>
           </div>
         </div>
 
         <div className="animate-float-slower absolute bottom-28 left-[62%]">
-          <span className="flex items-center gap-1.5 rounded-full border border-quest/40 bg-quest/10 px-3 py-1.5 text-xs font-bold text-violet-200 shadow-lg shadow-quest/20">
-            <Sparkles className="h-3.5 w-3.5" /> +250 XP
+          <span className="flex items-center gap-1.5 rounded-full border border-emerald-400/40 bg-emerald-400/10 px-3 py-1.5 text-xs font-bold text-emerald-200 shadow-lg shadow-emerald-500/15">
+            <Sparkles className="h-3.5 w-3.5" /> Signed off in 4h
           </span>
         </div>
       </div>
@@ -98,7 +105,7 @@ export default function Hero() {
           <Reveal>
             <span className="inline-flex items-center gap-2 rounded-full border border-violet-400/30 bg-violet-500/15 px-4 py-1.5 text-sm font-medium text-violet-200 shadow-[0_0_28px_rgba(139,92,246,0.18)]">
               <Sparkles className="h-4 w-4 text-violet-300" />
-              Client portal, but fun
+              The modern client approval portal
             </span>
           </Reveal>
 
@@ -106,7 +113,7 @@ export default function Hero() {
             <h1 className="mt-7 font-display text-[clamp(1.85rem,5.2vw,3.55rem)] font-bold leading-[1.14] tracking-tight text-white">
               Turn client deliverables into{" "}
               <span className="relative inline-block text-[#10B981]">
-                quests
+                seamless
                 <svg
                   className="absolute -bottom-1.5 left-0 h-2.5 w-full"
                   viewBox="0 0 140 10"
@@ -123,15 +130,14 @@ export default function Hero() {
                   />
                 </svg>
               </span>{" "}
-              worth <span className="text-[#F59E0B]">XP</span>.
+              <span className="text-[#F59E0B]">approvals</span>.
             </h1>
           </Reveal>
 
           <Reveal delay={220}>
             <p className="mt-7 max-w-xl text-lg leading-relaxed text-slate-400">
-              QuestBoard turns delivery into a game your clients actually play. Every deliverable becomes a quest,
-              every approval drops <span className="font-semibold text-[#F59E0B]">XP</span>, and progress glows on a
-              live board — less chasing, faster sign-off, happier retainers.
+              ClientQuest gives freelancers and agencies a premium workspace to share work, collect definitive
+              feedback, and eliminate approval bottlenecks.
             </p>
           </Reveal>
 
@@ -142,8 +148,7 @@ export default function Hero() {
                 onClick={handleCta}
                 className="group relative inline-flex items-center gap-2.5 rounded-full bg-[#8B5CF6] px-7 py-3.5 text-base font-semibold text-white shadow-xl shadow-violet-600/30 transition-all duration-300 hover:-translate-y-0.5 hover:bg-violet-400 hover:shadow-2xl hover:shadow-violet-500/45 active:translate-y-0 active:scale-95"
               >
-                <Zap className="h-4 w-4 fill-current" />
-                Start your first quest
+                Start your first project
                 <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
               </button>
               <a
@@ -159,7 +164,7 @@ export default function Hero() {
           <Reveal delay={430}>
             <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-500">
               <span className="flex items-center gap-1.5">
-                <Check className="h-3.5 w-3.5 text-[#10B981]" strokeWidth={3} /> Free for your first 5 quests
+                <Check className="h-3.5 w-3.5 text-[#10B981]" strokeWidth={3} /> Free for your first 5 projects
               </span>
               <span className="flex items-center gap-1.5">
                 <Check className="h-3.5 w-3.5 text-[#10B981]" strokeWidth={3} /> No credit card required

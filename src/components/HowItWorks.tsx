@@ -1,38 +1,38 @@
-import { ScrollText, ShieldCheck, Swords, Trophy, type LucideIcon } from "lucide-react";
+import { Activity, FileCheck2, ScrollText, ShieldCheck, type LucideIcon } from "lucide-react";
 import { CountUp, Reveal } from "../lib/motion";
 
 const STEPS: { icon: LucideIcon; title: string; desc: string; accent: string }[] = [
   {
     icon: ScrollText,
-    title: "Post a quest",
-    desc: "Scope the deliverable, attach the files, set its XP bounty. It lands in Brief, ready to run.",
+    title: "Share the work",
+    desc: "Upload deliverables, set the scope, invite your client. Everything lands on one visual board.",
     accent: "text-violet-300 border-quest/40",
   },
   {
-    icon: Swords,
-    title: "Play it live",
-    desc: "Work moves across the board while clients watch progress update in real time. No status meetings needed.",
+    icon: Activity,
+    title: "Track it live",
+    desc: "Progress updates in real time as work moves from Draft to Approved. No status meetings, no chase emails.",
     accent: "text-sky-300 border-sky-500/40",
   },
   {
     icon: ShieldCheck,
-    title: "One-click approval",
-    desc: "Clients review, leave notes, and sign off on the quest itself. Every decision is logged automatically.",
+    title: "Collect definitive feedback",
+    desc: "Clients review files and leave notes in context — every comment pinned to the exact deliverable.",
     accent: "text-[#10B981] border-emerald-500/40",
   },
   {
-    icon: Trophy,
-    title: "Collect the XP",
-    desc: "Sign-off drops XP, fills the bar, and levels the whole project up. Then the next quest begins.",
+    icon: FileCheck2,
+    title: "Lock the approval",
+    desc: "One click approves the work and locks the scope. Sign-off is logged, invoicing can start.",
     accent: "text-[#F59E0B] border-amber-500/40",
   },
 ];
 
 const STATS: { value: number; decimals?: number; suffix: string; suffixColor: string; label: string }[] = [
-  { value: 12400, suffix: "+", suffixColor: "text-quest", label: "quests shipped to date" },
+  { value: 12400, suffix: "+", suffixColor: "text-quest", label: "deliverables approved to date" },
   { value: 3.4, decimals: 1, suffix: "×", suffixColor: "text-[#F59E0B]", label: "faster client approvals" },
   { value: 98, suffix: "%", suffixColor: "text-[#10B981]", label: "on-time deliveries" },
-  { value: 26, suffix: "", suffixColor: "text-sky-400", label: "avg. client level reached" },
+  { value: 87, suffix: "%", suffixColor: "text-sky-400", label: "fewer status update emails" },
 ];
 
 /* Responsive divider borders: 1-col → 2-col (sm) → 4-col (lg) */
@@ -52,13 +52,13 @@ export default function HowItWorks() {
 
       <div className="relative mx-auto max-w-6xl px-5 sm:px-8">
         <Reveal className="max-w-2xl">
-          <p className="text-xs font-bold tracking-[0.28em] text-[#F59E0B]">THE LOOP</p>
+          <p className="text-xs font-bold tracking-[0.28em] text-[#F59E0B]">THE WORKFLOW</p>
           <h2 className="mt-4 font-display text-3xl font-bold tracking-tight text-white sm:text-4xl">
-            Four moves. <span className="text-slate-500">Zero chasing.</span>
+            From first draft to final sign-off — <span className="text-slate-500">without the chase.</span>
           </h2>
           <p className="mt-4 text-lg leading-relaxed text-slate-400">
-            The same loop every quest runs — simple enough for clients to learn in one call, addictive enough that
-            they keep coming back.
+            Every project runs the same clear path — simple enough for clients to master in minutes, structured
+            enough to end scope creep.
           </p>
         </Reveal>
 

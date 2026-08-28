@@ -4,7 +4,8 @@ export const prefersReducedMotion = (): boolean =>
   typeof window !== "undefined" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-const COLORS = ["#8B5CF6", "#10B981", "#F59E0B", "#E9D5FF", "#A7F3D0", "#ffffff"];
+/* Premium palette: gold, silver, emerald */
+const COLORS = ["#F59E0B", "#E2E8F0", "#10B981"];
 
 /** Burst centered on a DOM element (used by CTA buttons). */
 export function burstFrom(el: Element): void {
