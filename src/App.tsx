@@ -1,17 +1,49 @@
-import { useEffect, useState } from "react";
+import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { AuthProvider } from "./lib/auth";
 import LandingPage from "./components/LandingPage";
-import Portal from "./components/portal/Portal";
+import RequireAuth from "./components/app/RequireAuth";
+import AppShell from "./components/app/AppShell";
+import LoginPage from "./pages/LoginPage";
+import AuthCallbackPage from "./pages/AuthCallbackPage";
+import ClientPortalPage from "./pages/ClientPortalPage";
+import DashboardPage from "./pages/owner/DashboardPage";
+import ProjectsPage from "./pages/owner/ProjectsPage";
+import ProjectWorkspacePage from "./pages/owner/ProjectWorkspacePage";
+import ClientsPage from "./pages/clients/ClientsPage";
+import SettingsPage from "./pages/owner/SettingsPage";
+
+/** Marketing home — "enter portal" CTAs now lead to the passwordless demo portal. */
+function Home() {
+  const navigate = useNavigate();
+  return <LandingPage onEnter={() => navigate("/p/demo")} />;
+}
 
 export default function App() {
-  const [view, setView] = useState<"landing" | "portal">("landing");
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* public */}
+          <Route path="/" element={<Home />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
+          <Route path="/p/:token" element={<ClientPortalPage />} />
 
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "auto" });
-  }, [view]);
+          {/* owner app (protected) */}
+          <Route element={<RequireAuth />}>
+            <Route path="/app" element={<AppShell />}>
+              <Route index element={<DashboardPage />} />
+              <Route path="projects" element={<ProjectsPage />} />
+              <Route path="projects/:projectId" element={<ProjectWorkspacePage />} />
+              <Route path="clients" element={<ClientsPage />} />
+              <Route path="settings" element={<SettingsPage />} />
+            </Route>
+          </Route>
 
-  return view === "landing" ? (
-    <LandingPage onEnter={() => setView("portal")} />
-  ) : (
-    <Portal onExit={() => setView("landing")} />
+          {/* anything else goes home */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
