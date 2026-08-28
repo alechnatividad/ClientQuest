@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Clock, Check, LayoutDashboard, Shield, Trophy, type LucideIcon } from "lucide-react";
+import { BarChart3, Check, CheckCircle2, Clock, Layout, type LucideIcon } from "lucide-react";
 import { Reveal } from "../lib/motion";
 
 function KanbanSketch() {
@@ -26,19 +26,19 @@ function KanbanSketch() {
   );
 }
 
-function XpSketch() {
+function ProgressSketch() {
   return (
     <div>
       <div className="flex items-center justify-between text-[11px] font-semibold">
-        <span className="text-slate-500">Studio level</span>
-        <span className="rounded-full bg-amber-400/10 px-2 py-0.5 text-[#F59E0B]">LV 7</span>
+        <span className="truncate text-slate-500">Website relaunch · Atlas Co.</span>
+        <span className="ml-2 shrink-0 rounded-full bg-emerald-400/10 px-2 py-0.5 text-[#10B981]">68%</span>
       </div>
       <div className="relative mt-2 h-3 overflow-hidden rounded-full bg-slate-900/90">
-        <div className="h-full w-[72%] rounded-full bg-gradient-to-r from-[#8B5CF6] via-[#10B981] to-[#F59E0B]" />
+        <div className="h-full w-[68%] rounded-full bg-gradient-to-r from-[#10B981] to-emerald-400" />
         <span className="animate-shimmer absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-transparent via-white/25 to-transparent" />
       </div>
       <p className="mt-2 text-[11px] text-slate-500">
-        360 / 500 XP · <span className="text-[#10B981]">2 quests to level up</span>
+        5 of 8 deliverables approved · <span className="text-[#10B981]">on schedule</span>
       </p>
     </div>
   );
@@ -46,9 +46,9 @@ function XpSketch() {
 
 function ApprovalSketch() {
   const rows = [
-    { icon: <Check className="h-3 w-3 text-[#10B981]" strokeWidth={3} />, w: "w-3/4", done: true },
-    { icon: <Check className="h-3 w-3 text-[#10B981]" strokeWidth={3} />, w: "w-2/3", done: true },
-    { icon: <Clock className="h-3 w-3 text-[#F59E0B]" />, w: "w-1/2", done: false },
+    { icon: <Check className="h-3 w-3 text-[#10B981]" strokeWidth={3} />, w: "w-3/4", done: true, label: "APPROVED" },
+    { icon: <Check className="h-3 w-3 text-[#10B981]" strokeWidth={3} />, w: "w-2/3", done: true, label: "APPROVED" },
+    { icon: <Clock className="h-3 w-3 text-[#F59E0B]" />, w: "w-1/2", done: false, label: "IN REVIEW" },
   ];
   return (
     <div className="flex flex-col gap-2">
@@ -56,9 +56,7 @@ function ApprovalSketch() {
         <div
           key={i}
           className={`flex items-center gap-2.5 rounded-lg border px-2.5 py-2 transition-colors duration-300 ${
-            r.done
-              ? "border-emerald-500/20 bg-emerald-500/[0.05]"
-              : "border-amber-400/20 bg-amber-400/[0.05]"
+            r.done ? "border-emerald-500/20 bg-emerald-500/[0.05]" : "border-amber-400/20 bg-amber-400/[0.05]"
           }`}
         >
           <span
@@ -69,13 +67,19 @@ function ApprovalSketch() {
             {r.icon}
           </span>
           <span className={`h-1.5 rounded-full ${r.w} ${r.done ? "bg-slate-600" : "bg-slate-700"}`} />
-          <span
-            className={`ml-auto text-[10px] font-bold ${r.done ? "text-[#10B981]" : "text-[#F59E0B]"}`}
-          >
-            {r.done ? "SIGNED" : "REVIEW"}
+          <span className={`ml-auto text-[10px] font-bold ${r.done ? "text-[#10B981]" : "text-[#F59E0B]"}`}>
+            {r.label}
           </span>
         </div>
       ))}
+      <div className="mt-0.5 flex items-center gap-2">
+        <span className="rounded-lg bg-[#10B981] px-2.5 py-1 text-[10px] font-bold text-slate-950 shadow-sm shadow-emerald-500/30 transition-transform duration-300 group-hover:scale-105">
+          Approve
+        </span>
+        <span className="rounded-lg border border-slate-700 px-2.5 py-1 text-[10px] font-bold text-slate-400 transition-colors duration-300 group-hover:border-slate-600">
+          Request revisions
+        </span>
+      </div>
     </div>
   );
 }
@@ -84,21 +88,21 @@ type Card = { icon: LucideIcon; title: string; desc: string; sketch: ReactNode }
 
 const CARDS: Card[] = [
   {
-    icon: LayoutDashboard,
-    title: "Quest board",
-    desc: "Every deliverable is a quest card gliding across four columns — Brief, In Progress, Review, Shipped — so clients always know exactly where things stand, without emailing you.",
+    icon: Layout,
+    title: "Visual Kanban Board",
+    desc: "Four columns from Draft to Approved keep every deliverable and its status instantly visible.",
     sketch: <KanbanSketch />,
   },
   {
-    icon: Trophy,
-    title: "XP progress",
-    desc: "Approvals, milestones, and shipped quests all feed a shared XP bar. Clients watch their level climb in real time, and six-week projects stop feeling endless.",
-    sketch: <XpSketch />,
+    icon: BarChart3,
+    title: "Live Progress Tracking",
+    desc: "A dynamic progress bar shows clients exactly where the project stands, eliminating status update emails.",
+    sketch: <ProgressSketch />,
   },
   {
-    icon: Shield,
-    title: "Clean approvals",
-    desc: "One-click sign-offs, threaded notes, and an audit trail that logs itself. Feedback lives on the quest itself — no more archaeology through email chains.",
+    icon: CheckCircle2,
+    title: "One-Click Approvals",
+    desc: "Clients review files and click a single button to approve or request revisions, locking in the scope.",
     sketch: <ApprovalSketch />,
   },
 ];
@@ -110,11 +114,11 @@ export default function FeatureCards() {
         <Reveal className="max-w-2xl">
           <p className="text-xs font-bold tracking-[0.28em] text-quest">WHY IT WORKS</p>
           <h2 className="mt-4 font-display text-3xl font-bold tracking-tight text-white sm:text-4xl">
-            Built like a game. <span className="text-slate-500">Run like a studio.</span>
+            A premium workspace, <span className="text-slate-500">engineered for sign-off.</span>
           </h2>
           <p className="mt-4 text-lg leading-relaxed text-slate-400">
-            Three mechanics borrowed from the games your clients already love — wired straight into your delivery
-            workflow.
+            Three essentials that turn scattered feedback into decisive approvals — wired straight into your
+            delivery workflow.
           </p>
         </Reveal>
 

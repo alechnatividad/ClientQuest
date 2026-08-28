@@ -1,9 +1,9 @@
 import { ArrowUp, Dribbble, Gem, Github, Twitter } from "lucide-react";
 
 const PRODUCT_LINKS = [
-  { label: "Quest board", href: "#features" },
+  { label: "Visual Kanban board", href: "#features" },
   { label: "Live demo", href: "#demo" },
-  { label: "The loop", href: "#loop" },
+  { label: "The workflow", href: "#loop" },
   { label: "Get started", href: "#cta" },
 ];
 
@@ -14,9 +14,9 @@ const RESOURCE_LINKS = [
 ];
 
 const SOCIALS = [
-  { icon: Twitter, href: "https://twitter.com", label: "QuestBoard on Twitter" },
-  { icon: Github, href: "https://github.com", label: "QuestBoard on GitHub" },
-  { icon: Dribbble, href: "https://dribbble.com", label: "QuestBoard on Dribbble" },
+  { icon: Twitter, href: "https://twitter.com", label: "ClientQuest on Twitter" },
+  { icon: Github, href: "https://github.com", label: "ClientQuest on GitHub" },
+  { icon: Dribbble, href: "https://dribbble.com", label: "ClientQuest on Dribbble" },
 ];
 
 export default function Footer() {
@@ -30,13 +30,13 @@ export default function Footer() {
                 <Gem className="h-[18px] w-[18px] text-white" strokeWidth={2.25} />
               </span>
               <span className="font-display text-lg font-bold tracking-tight">
-                <span className="text-white">Quest</span>
-                <span className="text-[#10B981]">Board</span>
+                <span className="text-white">Client</span>
+                <span className="text-[#10B981]">Quest</span>
               </span>
             </a>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-slate-500">
-              The gamified client portal for studios that ship. Every deliverable a quest, every approval a drop of
-              XP.
+              The modern client approval portal for freelancers and agencies. Share work, collect definitive
+              feedback, and lock scope in one click.
             </p>
             <div className="mt-6 flex items-center gap-3">
               {SOCIALS.map((s) => (
@@ -88,7 +88,7 @@ export default function Footer() {
         </div>
 
         <div className="mt-12 flex flex-wrap items-center justify-between gap-4 border-t border-slate-800/80 pt-6">
-          <p className="text-sm text-slate-600">© 2026 QuestBoard. All quests reserved.</p>
+          <p className="text-sm text-slate-600">© 2026 ClientQuest. All rights reserved.</p>
           <a
             href="#top"
             className="group flex items-center gap-2 text-sm text-slate-500 transition-colors duration-200 hover:text-white"

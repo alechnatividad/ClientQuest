@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import {
   Check,
+  CheckCircle2,
   ChevronsRight,
   Eye,
   FileText,
-  Flag,
   Megaphone,
   Palette,
   PenTool,
@@ -12,45 +12,46 @@ import {
   RotateCcw,
   Smartphone,
   Sparkles,
-  Swords,
   TrendingUp,
-  Trophy,
   type LucideIcon,
 } from "lucide-react";
-import { prefersReducedMotion, smallBurstAt } from "../lib/confetti";
+import { cannons, prefersReducedMotion, smallBurstAt } from "../lib/confetti";
 import { Reveal } from "../lib/motion";
 
 type Stage = 0 | 1 | 2 | 3;
 
-interface Quest {
+interface Deliverable {
   id: number;
   title: string;
   client: string;
-  xp: number;
+  meta: string;
   icon: LucideIcon;
   tint: string;
   stage: Stage;
 }
 
-const INITIAL_QUESTS: Quest[] = [
-  { id: 1, title: "Homepage redesign", client: "Atlas Co.", xp: 250, icon: PenTool, tint: "bg-violet-500/15 text-violet-300", stage: 2 },
-  { id: 2, title: "Q3 impact report", client: "Nimbus", xp: 300, icon: TrendingUp, tint: "bg-sky-500/15 text-sky-300", stage: 1 },
-  { id: 3, title: "App onboarding flow", client: "Loop Health", xp: 400, icon: Smartphone, tint: "bg-emerald-500/15 text-emerald-300", stage: 0 },
-  { id: 4, title: "Packaging concepts", client: "Brew & Co.", xp: 200, icon: Palette, tint: "bg-amber-500/15 text-amber-300", stage: 0 },
-  { id: 5, title: "Launch email sequence", client: "Nimbus", xp: 180, icon: Megaphone, tint: "bg-rose-500/15 text-rose-300", stage: 1 },
-  { id: 6, title: "Pitch deck polish", client: "Orbit Labs", xp: 220, icon: Presentation, tint: "bg-violet-500/15 text-violet-300", stage: 2 },
-  { id: 7, title: "Brand guidelines v2", client: "Atlas Co.", xp: 260, icon: FileText, tint: "bg-emerald-500/15 text-emerald-300", stage: 3 },
+const INITIAL_ITEMS: Deliverable[] = [
+  { id: 1, title: "Homepage redesign", client: "Atlas Co.", meta: "3 files · v2", icon: PenTool, tint: "bg-violet-500/15 text-violet-300", stage: 2 },
+  { id: 2, title: "Q3 impact report", client: "Nimbus", meta: "1 file · v1", icon: TrendingUp, tint: "bg-sky-500/15 text-sky-300", stage: 1 },
+  { id: 3, title: "App onboarding flow", client: "Loop Health", meta: "6 screens · v3", icon: Smartphone, tint: "bg-emerald-500/15 text-emerald-300", stage: 0 },
+  { id: 4, title: "Packaging concepts", client: "Brew & Co.", meta: "4 concepts · v1", icon: Palette, tint: "bg-amber-500/15 text-amber-300", stage: 0 },
+  { id: 5, title: "Launch email sequence", client: "Nimbus", meta: "5 emails · v2", icon: Megaphone, tint: "bg-rose-500/15 text-rose-300", stage: 1 },
+  { id: 6, title: "Pitch deck polish", client: "Orbit Labs", meta: "18 slides · v4", icon: Presentation, tint: "bg-violet-500/15 text-violet-300", stage: 2 },
+  { id: 7, title: "Brand guidelines v2", client: "Atlas Co.", meta: "PDF · final", icon: FileText, tint: "bg-emerald-500/15 text-emerald-300", stage: 3 },
 ];
 
 const COLUMNS: { name: string; dot: string; icon: LucideIcon }[] = [
-  { name: "Brief", dot: "bg-slate-500", icon: FileText },
-  { name: "In Progress", dot: "bg-violet-400", icon: Swords },
-  { name: "Review", dot: "bg-amber-400", icon: Eye },
-  { name: "Shipped", dot: "bg-emerald-400", icon: Flag },
+  { name: "Draft", dot: "bg-slate-500", icon: FileText },
+  { name: "In Progress", dot: "bg-violet-400", icon: PenTool },
+  { name: "In Review", dot: "bg-amber-400", icon: Eye },
+  { name: "Approved", dot: "bg-emerald-400", icon: CheckCircle2 },
 ];
 
-const BASE_LEVEL = 6;
-const THRESHOLD = 500;
+/* How far each stage counts toward overall project progress */
+const WEIGHTS = [0, 35, 70, 100];
+
+const progressOf = (items: Deliverable[]) =>
+  Math.round(items.reduce((sum, it) => sum + WEIGHTS[it.stage], 0) / items.length);
 
 interface Float {
   id: number;
@@ -59,34 +60,31 @@ interface Float {
 }
 interface Toast {
   id: number;
-  kind: "ship" | "level";
+  kind: "approved" | "complete";
   title: string;
   sub: string;
 }
 
 export default function QuestBoardDemo() {
-  const [quests, setQuests] = useState<Quest[]>(INITIAL_QUESTS);
-  const [total, setTotal] = useState(0);
-  const [shownXp, setShownXp] = useState(0);
+  const [items, setItems] = useState<Deliverable[]>(INITIAL_ITEMS);
+  const [progress, setProgress] = useState(() => progressOf(INITIAL_ITEMS));
+  const [shownPct, setShownPct] = useState(() => progressOf(INITIAL_ITEMS));
   const [floats, setFloats] = useState<Float[]>([]);
   const [toast, setToast] = useState<Toast | null>(null);
-  const shownRef = useRef(0);
+  const shownRef = useRef(progressOf(INITIAL_ITEMS));
   const toastTimer = useRef<number | undefined>(undefined);
 
-  const level = BASE_LEVEL + Math.floor(total / THRESHOLD);
-  const intoLevel = total % THRESHOLD;
-  const progress = (intoLevel / THRESHOLD) * 100;
-  const toNext = THRESHOLD - intoLevel;
+  const approvedCount = items.filter((it) => it.stage === 3).length;
 
-  /* Animate the displayed XP toward the real total */
+  /* Animate the displayed percentage toward the real value */
   useEffect(() => {
     if (prefersReducedMotion()) {
-      shownRef.current = total;
-      setShownXp(total);
+      shownRef.current = progress;
+      setShownPct(progress);
       return;
     }
     const from = shownRef.current;
-    const to = total;
+    const to = progress;
     if (from === to) return;
     const t0 = performance.now();
     const dur = 700;
@@ -96,61 +94,59 @@ export default function QuestBoardDemo() {
       const eased = 1 - Math.pow(1 - p, 3);
       const v = Math.round(from + (to - from) * eased);
       shownRef.current = v;
-      setShownXp(v);
+      setShownPct(v);
       if (p < 1) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [total]);
+  }, [progress]);
 
   const showToast = (t: Omit<Toast, "id">) => {
     window.clearTimeout(toastTimer.current);
     setToast({ ...t, id: Date.now() });
-    toastTimer.current = window.setTimeout(() => setToast(null), 2400);
+    toastTimer.current = window.setTimeout(() => setToast(null), 2600);
   };
 
-  const advance = (quest: Quest, e: MouseEvent<HTMLButtonElement>) => {
-    if (quest.stage >= 3) return;
-    const next = (quest.stage + 1) as Stage;
-    const chunk = Math.round(quest.xp / 3);
-    const gained = next === 3 ? quest.xp - chunk * 2 : chunk;
+  const advance = (item: Deliverable, e: MouseEvent<HTMLButtonElement>) => {
+    if (item.stage >= 3) return;
+    const next = (item.stage + 1) as Stage;
+    const nextItems = items.map((it) => (it.id === item.id ? { ...it, stage: next } : it));
+    const newProgress = progressOf(nextItems);
+    const delta = newProgress - progress;
 
-    setQuests((prev) => prev.map((q) => (q.id === quest.id ? { ...q, stage: next } : q)));
-    const prevTotal = total;
-    const newTotal = total + gained;
-    setTotal(newTotal);
+    setItems(nextItems);
+    setProgress(newProgress);
 
-    setFloats((prev) => [
-      ...prev.slice(-4),
-      { id: Date.now() + Math.random(), amt: gained, left: 15 + Math.random() * 60 },
-    ]);
-    window.setTimeout(() => {
-      setFloats((prev) => prev.slice(1));
-    }, 1200);
+    if (delta > 0) {
+      setFloats((prev) => [
+        ...prev.slice(-4),
+        { id: Date.now() + Math.random(), amt: delta, left: 15 + Math.random() * 60 },
+      ]);
+      window.setTimeout(() => {
+        setFloats((prev) => prev.slice(1));
+      }, 1200);
+    }
 
     if (next === 3) {
       const r = e.currentTarget.getBoundingClientRect();
       smallBurstAt((r.left + r.width / 2) / window.innerWidth, (r.top + r.height / 2) / window.innerHeight);
-      showToast({ kind: "ship", title: "Quest shipped!", sub: `“${quest.title}” paid out +${gained} XP` });
+      showToast({ kind: "approved", title: "Deliverable approved", sub: `“${item.title}” — scope locked for ${item.client}` });
     }
 
-    const leveledUp =
-      BASE_LEVEL + Math.floor(newTotal / THRESHOLD) > BASE_LEVEL + Math.floor(prevTotal / THRESHOLD);
-    if (leveledUp) {
-      const newLevel = BASE_LEVEL + Math.floor(newTotal / THRESHOLD);
+    if (newProgress === 100) {
       window.setTimeout(() => {
-        smallBurstAt(0.5, 0.4);
-        showToast({ kind: "level", title: `Level up! → Level ${newLevel}`, sub: "Your client just felt that." });
-      }, 350);
+        cannons();
+        showToast({ kind: "complete", title: "Project complete", sub: "Every deliverable approved — beautifully done." });
+      }, 380);
     }
   };
 
   const reset = () => {
-    setQuests(INITIAL_QUESTS);
-    setTotal(0);
+    setItems(INITIAL_ITEMS);
+    setProgress(progressOf(INITIAL_ITEMS));
     setFloats([]);
     setToast(null);
-    showToast({ kind: "ship", title: "Board reset", sub: "A fresh sprint awaits. Ship something!" });
+    showToast({ kind: "approved", title: "Board reset", sub: "A fresh project awaits — get it approved." });
   };
 
   return (
@@ -165,11 +161,11 @@ export default function QuestBoardDemo() {
           <div className="max-w-2xl">
             <p className="text-xs font-bold tracking-[0.28em] text-[#10B981]">LIVE DEMO</p>
             <h2 className="mt-4 font-display text-3xl font-bold tracking-tight text-white sm:text-4xl">
-              Go ahead — <span className="text-[#F59E0B]">ship something.</span>
+              Go ahead — <span className="text-[#F59E0B]">get something approved.</span>
             </h2>
             <p className="mt-4 text-lg leading-relaxed text-slate-400">
-              This is a real mini-board. Click any quest card to push it one column forward and watch the XP bar
-              fill. Shipping pays the full bounty.
+              This is a live mini-board. Click any deliverable to move it one column forward and watch project
+              progress update in real time — just like your clients will.
             </p>
           </div>
           <button
@@ -181,25 +177,31 @@ export default function QuestBoardDemo() {
           </button>
         </Reveal>
 
-        {/* XP HUD */}
+        {/* progress HUD */}
         <Reveal delay={120}>
           <div className="relative mt-10 rounded-2xl border border-slate-700/60 bg-slate-900/70 p-5 sm:p-6">
             {toast && (
               <div
                 key={toast.id}
                 className={`animate-pop absolute -top-5 right-5 z-20 flex items-center gap-3 rounded-xl border px-4 py-3 shadow-2xl shadow-black/50 backdrop-blur ${
-                  toast.kind === "level"
-                    ? "border-quest/50 bg-slate-900/95"
+                  toast.kind === "complete"
+                    ? "border-[#F59E0B]/50 bg-slate-900/95"
                     : "border-emerald-500/40 bg-slate-900/95"
                 }`}
                 role="status"
               >
                 <span
                   className={`grid h-8 w-8 place-items-center rounded-lg ${
-                    toast.kind === "level" ? "bg-quest/20 text-violet-300" : "bg-emerald-500/15 text-[#10B981]"
+                    toast.kind === "complete"
+                      ? "bg-[#F59E0B]/20 text-[#F59E0B]"
+                      : "bg-emerald-500/15 text-[#10B981]"
                   }`}
                 >
-                  {toast.kind === "level" ? <Trophy className="h-4 w-4" /> : <Check className="h-4 w-4" strokeWidth={3} />}
+                  {toast.kind === "complete" ? (
+                    <Sparkles className="h-4 w-4" />
+                  ) : (
+                    <Check className="h-4 w-4" strokeWidth={3} />
+                  )}
                 </span>
                 <span>
                   <span className="block text-sm font-bold text-white">{toast.title}</span>
@@ -209,14 +211,14 @@ export default function QuestBoardDemo() {
             )}
 
             <div className="flex flex-wrap items-center gap-5">
-              {/* level tile */}
+              {/* percent tile */}
               <div
-                key={level}
-                className="animate-pop grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-[#8B5CF6] to-[#6D28D9] shadow-lg shadow-quest/30"
+                key={progress}
+                className="animate-pop grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-[#10B981] to-[#059669] shadow-lg shadow-emerald-500/25"
               >
                 <div className="text-center leading-none">
-                  <p className="text-[9px] font-bold tracking-[0.2em] text-violet-200">LVL</p>
-                  <p className="mt-1 font-display text-xl font-bold text-white">{level}</p>
+                  <p className="font-display text-lg font-bold text-white">{Math.round(shownPct)}%</p>
+                  <p className="mt-1 text-[9px] font-bold tracking-[0.2em] text-emerald-100">DONE</p>
                 </div>
               </div>
 
@@ -226,24 +228,22 @@ export default function QuestBoardDemo() {
                   <p className="text-sm font-semibold text-white">
                     Nightowl Studio <span className="font-normal text-slate-500">· client: Atlas Co.</span>
                   </p>
-                  <p className="font-display text-sm font-bold text-[#F59E0B]">
-                    {shownXp.toLocaleString("en-US")} XP
-                  </p>
+                  <p className="font-display text-sm font-bold text-[#10B981]">{Math.round(shownPct)}% complete</p>
                 </div>
                 <div className="relative mt-2.5">
-                  {/* floating +XP labels */}
+                  {/* floating +percent labels */}
                   {floats.map((f) => (
                     <span
                       key={f.id}
                       style={{ left: `${f.left}%` }}
-                      className="animate-rise pointer-events-none absolute -top-7 z-10 font-display text-sm font-bold text-[#F59E0B]"
+                      className="animate-rise pointer-events-none absolute -top-7 z-10 font-display text-sm font-bold text-[#10B981]"
                     >
-                      +{f.amt} XP
+                      +{f.amt}%
                     </span>
                   ))}
                   <div className="h-3.5 overflow-hidden rounded-full bg-slate-800 ring-1 ring-inset ring-slate-700/60">
                     <div
-                      className="relative h-full rounded-full bg-gradient-to-r from-[#8B5CF6] via-[#10B981] to-[#F59E0B] transition-[width] duration-700 ease-out"
+                      className="relative h-full rounded-full bg-gradient-to-r from-[#10B981] to-[#F59E0B] transition-[width] duration-700 ease-out"
                       style={{ width: `${Math.max(progress, 2)}%` }}
                     >
                       <span className="animate-shimmer absolute inset-y-0 left-0 w-20 bg-gradient-to-r from-transparent via-white/30 to-transparent" />
@@ -251,8 +251,8 @@ export default function QuestBoardDemo() {
                   </div>
                 </div>
                 <p className="mt-2 text-xs text-slate-500">
-                  <span className="font-semibold text-[#F59E0B]">{toNext} XP</span> to Level {level + 1} · keep
-                  shipping
+                  <span className="font-semibold text-[#10B981]">{approvedCount} of {items.length}</span>{" "}
+                  deliverables approved · on schedule
                 </p>
               </div>
             </div>
@@ -264,7 +264,7 @@ export default function QuestBoardDemo() {
           <div className="mt-5 rounded-2xl border border-slate-700/60 bg-slate-900/60 p-4 sm:p-5">
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {COLUMNS.map((col, ci) => {
-                const inCol = quests.filter((q) => q.stage === ci);
+                const inCol = items.filter((it) => it.stage === ci);
                 return (
                   <div key={col.name} className="flex flex-col rounded-xl border border-slate-800 bg-slate-950/50 p-3">
                     <div className="mb-3 flex items-center justify-between px-1">
@@ -279,14 +279,14 @@ export default function QuestBoardDemo() {
 
                     <div className="flex min-h-[130px] flex-col gap-2.5">
                       {inCol.map((q) => {
-                        const shipped = q.stage === 3;
+                        const approved = q.stage === 3;
                         return (
                           <button
                             key={`${q.id}-${q.stage}`}
                             onClick={(e) => advance(q, e)}
-                            disabled={shipped}
+                            disabled={approved}
                             className={`animate-pop group/card w-full rounded-xl border p-3 text-left transition-all duration-300 ${
-                              shipped
+                              approved
                                 ? "cursor-default border-emerald-500/30 bg-emerald-500/[0.06]"
                                 : "cursor-pointer border-slate-700/60 bg-slate-800/70 hover:-translate-y-0.5 hover:border-quest/60 hover:shadow-lg hover:shadow-quest/10"
                             }`}
@@ -301,12 +301,12 @@ export default function QuestBoardDemo() {
                               </span>
                             </div>
                             <div className="mt-2.5 flex items-center justify-between">
-                              <span className="rounded-full bg-amber-400/10 px-2 py-0.5 text-[11px] font-bold text-[#F59E0B]">
-                                +{q.xp} XP
+                              <span className="rounded-full bg-slate-700/40 px-2 py-0.5 text-[11px] font-semibold text-slate-400">
+                                {q.meta}
                               </span>
-                              {shipped ? (
+                              {approved ? (
                                 <span className="flex items-center gap-1 text-[11px] font-bold text-[#10B981]">
-                                  <Check className="h-3 w-3" strokeWidth={3} /> Shipped
+                                  <Check className="h-3 w-3" strokeWidth={3} /> Approved
                                 </span>
                               ) : (
                                 <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-400 opacity-0 transition-opacity duration-200 group-hover/card:opacity-100">
@@ -334,7 +334,7 @@ export default function QuestBoardDemo() {
         <Reveal delay={300}>
           <p className="mt-5 flex items-center gap-2 text-sm text-slate-500">
             <Sparkles className="h-4 w-4 text-quest" />
-            Tip: ship every quest to trigger a level-up — the confetti is on us.
+            Tip: approve every deliverable to complete the project — the confetti is on us.
           </p>
         </Reveal>
       </div>

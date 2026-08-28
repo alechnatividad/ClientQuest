@@ -1,9 +1,9 @@
 import { useRef } from "react";
-import { ArrowRight, Check, Gem, Zap } from "lucide-react";
+import { ArrowRight, Check, Gem } from "lucide-react";
 import { burstFrom, cannons } from "../lib/confetti";
 import { Reveal } from "../lib/motion";
 
-const ASSURANCES = ["No credit card", "Free for 5 quests", "2-minute setup"];
+const ASSURANCES = ["No credit card", "Free for 5 projects", "2-minute setup"];
 
 export default function FinalCta() {
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -32,12 +32,13 @@ export default function FinalCta() {
               </span>
 
               <h2 className="mx-auto mt-7 max-w-2xl font-display text-3xl font-bold leading-[1.18] tracking-tight text-white sm:text-4xl lg:text-[2.6rem]">
-                Ready to make delivery feel like a <span className="text-[#10B981]">game</span> your clients{" "}
-                <span className="text-[#F59E0B]">win</span>?
+                Ready to make every sign-off{" "}
+                <span className="text-[#10B981]">effortless</span>?
               </h2>
 
               <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-slate-400">
-                Spin up your first quest board in minutes. Your next approval could be a confetti moment.
+                Spin up your first project board in minutes — definitive feedback, locked scope, and clients who
+                actually enjoy reviewing.
               </p>
 
               <button
@@ -45,8 +46,7 @@ export default function FinalCta() {
                 onClick={celebrate}
                 className="group relative mt-10 inline-flex items-center gap-2.5 rounded-full bg-[#8B5CF6] px-8 py-4 text-base font-semibold text-white shadow-xl shadow-violet-600/35 transition-all duration-300 hover:-translate-y-0.5 hover:bg-violet-400 hover:shadow-2xl hover:shadow-violet-500/50 active:translate-y-0 active:scale-95"
               >
-                <Zap className="h-4 w-4 fill-current" />
-                Start your first quest
+                Start your first project
                 <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
               </button>
 

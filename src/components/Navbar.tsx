@@ -4,7 +4,7 @@ import { ArrowUpRight, Gem } from "lucide-react";
 const LINKS = [
   { label: "Features", href: "#features" },
   { label: "Live demo", href: "#demo" },
-  { label: "The loop", href: "#loop" },
+  { label: "Workflow", href: "#loop" },
   { label: "Stories", href: "#stories" },
 ];
 
@@ -28,13 +28,13 @@ export default function Navbar() {
     >
       <nav className="mx-auto flex max-w-6xl items-center justify-between px-5 sm:px-8">
         {/* Logo */}
-        <a href="#top" className="group flex items-center gap-2.5" aria-label="QuestBoard home">
+        <a href="#top" className="group flex items-center gap-2.5" aria-label="ClientQuest home">
           <span className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-quest to-quest-deep shadow-lg shadow-quest/30 transition-transform duration-300 group-hover:-rotate-12 group-hover:scale-105">
             <Gem className="h-[18px] w-[18px] text-white" strokeWidth={2.25} />
           </span>
           <span className="font-display text-lg font-bold tracking-tight">
-            <span className="text-white">Quest</span>
-            <span className="text-[#10B981]">Board</span>
+            <span className="text-white">Client</span>
+            <span className="text-[#10B981]">Quest</span>
           </span>
         </a>
 
