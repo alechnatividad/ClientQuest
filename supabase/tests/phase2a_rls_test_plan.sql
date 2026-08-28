@@ -67,6 +67,11 @@ create temporary table test_ids (
   client_a    uuid
 );
 
+-- The temp table is created by the SQL editor (postgres role), but the tests
+-- below switch to `authenticated` and must read/write test_ids across those
+-- role changes — hence the explicit grant.
+grant select, insert, update on test_ids to authenticated;
+
 
 /* ── impersonate user A ─────────────────────────────────────────────────── */
 set local role authenticated;
