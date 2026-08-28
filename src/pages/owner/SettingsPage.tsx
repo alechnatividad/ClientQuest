@@ -25,7 +25,7 @@ export default function SettingsPage() {
   const email = user?.email ?? "—";
   const provider = (user?.app_metadata?.provider as string | undefined) ?? "email";
   const urlSet = Boolean(import.meta.env.VITE_SUPABASE_URL);
-  const keySet = Boolean(import.meta.env.VITE_SUPABASE_ANON_KEY);
+  const keySet = Boolean(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY);
 
   const handleSignOut = async () => {
     await signOut();
@@ -75,7 +75,7 @@ export default function SettingsPage() {
         </p>
         <ul className="mt-4 space-y-2.5">
           <StatusRow label="VITE_SUPABASE_URL" ok={urlSet} />
-          <StatusRow label="VITE_SUPABASE_ANON_KEY" ok={keySet} />
+          <StatusRow label="VITE_SUPABASE_PUBLISHABLE_KEY" ok={keySet} />
         </ul>
         <p className="mt-4 flex items-start gap-2 text-[13px] leading-relaxed text-slate-500">
           <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-600" />
