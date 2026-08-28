@@ -187,7 +187,7 @@ export default function LoginPage() {
                 Copy <code className="rounded bg-slate-800 px-1.5 py-0.5 text-xs text-slate-200">.env.example</code> to{" "}
                 <code className="rounded bg-slate-800 px-1.5 py-0.5 text-xs text-slate-200">.env.local</code> and add{" "}
                 <code className="rounded bg-slate-800 px-1.5 py-0.5 text-xs text-slate-200">VITE_SUPABASE_URL</code> +{" "}
-                <code className="rounded bg-slate-800 px-1.5 py-0.5 text-xs text-slate-200">VITE_SUPABASE_ANON_KEY</code>
+                <code className="rounded bg-slate-800 px-1.5 py-0.5 text-xs text-slate-200">VITE_SUPABASE_PUBLISHABLE_KEY</code>
                 , then restart the dev server.
               </p>
             </div>
