@@ -406,7 +406,17 @@ begin
 
   raise notice 'PASS (test 13): a project cannot be moved between workspaces via UPDATE';
 end $$;
-
+/* ── impersonate user C for tests 14–15 ───────────────────────────────────
+   User C is a plain member of Workspace A. Members may normally update
+   clients/projects, so the created_by guard itself must reject tampering.
+*/
+reset role;
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"00000000-0000-0000-0000-0000000000cc","role":"authenticated","aud":"authenticated"}',
+  true
+);
 
 /* ── impersonate user C for tests 14–15 ───────────────────────────────────
    C is a plain member of workspace A. Members may normally UPDATE clients
