@@ -23,7 +23,9 @@ export default function AuthCallbackPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const destination = sanitizeReturnPath(params.get("return_to")) ?? takeStoredReturnTo();
+    const storedDestination = takeStoredReturnTo();
+    const destination =
+      sanitizeReturnPath(params.get("return_to")) ?? storedDestination;
 
     const finish = (to: string) => {
       if (settled.current) return;
