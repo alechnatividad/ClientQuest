@@ -4,6 +4,7 @@ import LandingPage from "./components/LandingPage";
 import RequireAuth from "./components/app/RequireAuth";
 import AppShell from "./components/app/AppShell";
 import LoginPage from "./pages/LoginPage";
+import AuthCallbackPage from "./pages/AuthCallbackPage";
 import ClientPortalPage from "./pages/ClientPortalPage";
 import DashboardPage from "./pages/owner/DashboardPage";
 import ProjectsPage from "./pages/owner/ProjectsPage";
@@ -25,6 +26,7 @@ export default function App() {
           {/* public */}
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route path="/p/:token" element={<ClientPortalPage />} />
 
           {/* owner app (protected) */}

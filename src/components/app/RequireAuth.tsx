@@ -1,14 +1,25 @@
+import { useEffect } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { Gem } from "lucide-react";
-import { useAuth } from "../../lib/auth";
+import { rememberReturnTo, useAuth } from "../../lib/auth";
 
 /**
  * Layout route guarding everything under /app.
- * Restores the session first, then either renders children or bounces to /login.
+ * Restores the session first, then either renders children or bounces to /login —
+ * recording the attempted path (e.g. /app/projects/123) so the auth flow can
+ * return the owner to exactly where they were headed.
  */
 export default function RequireAuth() {
   const { user, initializing } = useAuth();
   const location = useLocation();
+  const isAuthed = Boolean(user);
+
+  // Record the intended destination only when we're about to bounce.
+  useEffect(() => {
+    if (!initializing && !isAuthed) {
+      rememberReturnTo(location.pathname + location.search);
+    }
+  }, [initializing, isAuthed, location.pathname, location.search]);
 
   if (initializing) {
     return (
@@ -24,7 +35,7 @@ export default function RequireAuth() {
   }
 
   if (!user) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    return <Navigate to="/login" replace />;
   }
 
   return <Outlet />;
