@@ -418,18 +418,6 @@ select set_config(
   true
 );
 
-/* ── impersonate user C for tests 14–15 ───────────────────────────────────
-   C is a plain member of workspace A. Members may normally UPDATE clients
-   and projects, so only the created_by guard trigger can reject an
-   audit-field rewrite — which is exactly what these tests prove. */
-reset role;
-set local role authenticated;
-select set_config(
-  'request.jwt.claims',
-  '{"sub":"00000000-0000-0000-0000-0000000000cc","role":"authenticated","aud":"authenticated"}',
-  true
-);
-
 
 /* ── test 14: a member cannot rewrite a client's created_by ─────────────── */
 -- Runs as user C, a plain member of workspace A: the members UPDATE policy
