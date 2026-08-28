@@ -41,10 +41,10 @@ export default function AuthCallbackPage() {
     // supabase-js exchanges the code from the URL automatically; we wait for
     // the resulting SIGNED_IN event (or an already-restored session).
     const {
-       { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) finish(destination);
-    });
+  data: { subscription },
+} = supabase.auth.onAuthStateChange((_event, session) => {
+  if (session) finish(destination);
+});
 
     supabase.auth
       .getSession()
