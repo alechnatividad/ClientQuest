@@ -18,6 +18,16 @@
     - RLS on all four tables — members-only access, no anon policies
     - composite foreign key (client_id, workspace_id) -> clients(id, workspace_id)
       making cross-workspace client references structurally impossible
+    - BEFORE UPDATE immutability guards that REJECT (raise, never silently
+      rewrite) changes to:
+        workspaces.owner_id   — no privilege escalation via UPDATE; ownership
+                                transfer is deliberately out of scope for 2A
+        clients.workspace_id  — a row can never move between workspaces, even
+        projects.workspace_id   when the caller belongs to both
+        clients.created_by    — audit fields frozen after INSERT
+        projects.created_by
+    - SECURITY DEFINER authorization helpers explicitly revoked from PUBLIC
+      and granted to authenticated only (never anon)
 
   SAFETY
     - Purely additive. Safe to run ONCE on a fresh ClientQuest Supabase project.
@@ -238,7 +248,89 @@ create trigger workspaces_owner_membership
   for each row execute function public.handle_workspace_created();
 
 
-/* ── 6. grants ───────────────────────────────────────────────────────────────
+/* ── 6. immutability guards (tenancy & audit integrity) ──────────────────────
+   BEFORE UPDATE trigger functions that RAISE — a rejected statement is rolled
+   back in full; nothing is silently rewritten.
+
+   These close three escalation/tampering paths that RLS alone cannot express:
+
+     workspaces.owner_id    the update policy lets owners/admins edit workspace
+                            metadata; without this guard an admin could set
+                            owner_id to themselves and become the effective
+                            owner. Ownership transfer is NOT implemented in 2A.
+                            (name/slug remain editable by owners/admins.)
+     clients.workspace_id   tenancy is fixed at INSERT. Even a user who belongs
+     projects.workspace_id  to BOTH workspaces cannot move a row across the
+                            boundary with an UPDATE.
+     clients.created_by     audit provenance is frozen after INSERT — an update
+     projects.created_by    may not reattribute who created a record.
+
+   Each guard compares with IS DISTINCT FROM so NULL transitions are caught
+   too. Plain SECURITY INVOKER functions — RLS has already restricted who can
+   reach the UPDATE, and the trigger runs inside the same statement/role.
+*/
+
+create or replace function public.guard_workspace_owner_id()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.owner_id is distinct from old.owner_id then
+    raise exception
+      'workspaces.owner_id is immutable. Ownership transfer is not supported in this phase.';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger workspaces_guard_owner_id
+  before update on public.workspaces
+  for each row execute function public.guard_workspace_owner_id();
+
+create or replace function public.guard_workspace_id()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.workspace_id is distinct from old.workspace_id then
+    raise exception
+      'workspace_id is immutable. Rows cannot be moved between workspaces.';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger clients_guard_workspace_id
+  before update on public.clients
+  for each row execute function public.guard_workspace_id();
+
+create trigger projects_guard_workspace_id
+  before update on public.projects
+  for each row execute function public.guard_workspace_id();
+
+create or replace function public.guard_created_by()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.created_by is distinct from old.created_by then
+    raise exception
+      'created_by is immutable after creation.';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger clients_guard_created_by
+  before update on public.clients
+  for each row execute function public.guard_created_by();
+
+create trigger projects_guard_created_by
+  before update on public.projects
+  for each row execute function public.guard_created_by();
+
+
+/* ── 7. grants ───────────────────────────────────────────────────────────────
   Deliberately NO grants to anon. service_role bypasses RLS by design and is
   only ever used server-side.
 */
@@ -253,12 +345,18 @@ grant select, insert, update, delete on public.workspace_members to service_role
 grant select, insert, update, delete on public.clients           to service_role;
 grant select, insert, update, delete on public.projects          to service_role;
 
+-- SECURITY DEFINER helpers: strip the default PUBLIC execute grant first,
+-- then explicitly allow authenticated callers only. Never exposed to anon.
+revoke execute on function public.is_workspace_member(uuid)  from public;
+revoke execute on function public.is_workspace_owner(uuid)   from public;
+revoke execute on function public.can_manage_workspace(uuid) from public;
+
 grant execute on function public.is_workspace_member(uuid)  to authenticated;
 grant execute on function public.is_workspace_owner(uuid)   to authenticated;
 grant execute on function public.can_manage_workspace(uuid) to authenticated;
 
 
-/* ── 7. row level security ─────────────────────────────────────────────────── */
+/* ── 8. row level security ─────────────────────────────────────────────────── */
 
 alter table public.workspaces        enable row level security;
 alter table public.workspace_members enable row level security;
@@ -266,7 +364,9 @@ alter table public.clients           enable row level security;
 alter table public.projects          enable row level security;
 
 /* workspaces: members read; anyone authenticated may create their own;
-   owners/admins update metadata; only the owner deletes. */
+   owners/admins update metadata (name/slug — owner_id itself is frozen by
+   the guard trigger in section 6, so the update policy cannot be abused to
+   transfer ownership); only the owner deletes. */
 create policy workspaces_select_member on public.workspaces
   for select to authenticated
   using (public.is_workspace_member(id));

@@ -14,7 +14,17 @@
      7. User B cannot read Project A.
      8. User B cannot insert themselves into Workspace A.
      9. A project cannot reference a client belonging to another workspace.
-    10. Workspace deletion cascades to its clients/projects/members.
+    10. An admin cannot change a workspace's owner_id.
+    11. A member cannot change a workspace's owner_id.
+    12. A client cannot be moved to another workspace via UPDATE.
+    13. A project cannot be moved to another workspace via UPDATE.
+    14. A member cannot rewrite a client's created_by.
+    15. A member cannot rewrite a project's created_by.
+    16. Workspace deletion cascades to its clients/projects/members.
+
+  Tests 10–15 exercise the database-level immutability guards (BEFORE UPDATE
+  triggers), not RLS — they must raise, and the protected value must remain
+  unchanged afterwards. RLS is never weakened to make a test pass.
 
   HOW TO RUN
     1. Apply supabase/migrations/20260216120000_phase2a_core_schema.sql first.
@@ -38,14 +48,17 @@
 begin;
 
 -- fixed fixture ids (rolled back at the end)
---   user A: 00000000-0000-0000-0000-0000000000aa
---   user B: 00000000-0000-0000-0000-0000000000bb
+--   user A: 00000000-0000-0000-0000-0000000000aa  (owner of workspace A)
+--   user B: 00000000-0000-0000-0000-0000000000bb  (outsider; later admin of A)
+--   user C: 00000000-0000-0000-0000-0000000000cc  (plain member of A)
 
 insert into auth.users (id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
 values
   ('00000000-0000-0000-0000-0000000000aa', 'authenticated', 'authenticated', 'owner-a@clientquest.test',
    '{"provider":"email","providers":["email"]}', '{}', now(), now()),
   ('00000000-0000-0000-0000-0000000000bb', 'authenticated', 'authenticated', 'owner-b@clientquest.test',
+   '{"provider":"email","providers":["email"]}', '{}', now(), now()),
+  ('00000000-0000-0000-0000-0000000000cc', 'authenticated', 'authenticated', 'member-c@clientquest.test',
    '{"provider":"email","providers":["email"]}', '{}', now(), now());
 
 -- cross-role fixture store (temp tables are not subject to RLS)
@@ -220,7 +233,244 @@ begin
 end $$;
 
 
-/* ── test 10: workspace deletion cascades cleanly ───────────────────────── */
+/* ── fixture for tests 10–11: give workspace A an admin and a member ──────
+   Phase 2A has no member-management API, so the roster rows are seeded as
+   postgres (the SQL editor role). This is test setup, not an RLS weakening —
+   the guarded UPDATEs below still run as `authenticated` through real RLS. */
+reset role;
+
+insert into public.workspace_members (workspace_id, user_id, role)
+select workspace_a, '00000000-0000-0000-0000-0000000000bb', 'admin'
+from test_ids;
+
+insert into public.workspace_members (workspace_id, user_id, role)
+select workspace_a, '00000000-0000-0000-0000-0000000000cc', 'member'
+from test_ids;
+
+
+/* ── test 10: an admin cannot change a workspace's owner_id ─────────────── */
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"00000000-0000-0000-0000-0000000000bb","role":"authenticated","aud":"authenticated"}',
+  true
+);
+
+do $$
+declare
+  v_ws uuid;
+begin
+  select workspace_a into v_ws from test_ids;
+
+  begin
+    -- B passes the RLS update policy (admin), so only the guard can stop this
+    update public.workspaces
+    set owner_id = '00000000-0000-0000-0000-0000000000bb'
+    where id = v_ws;
+
+    raise exception 'FAIL (test 10): admin B changed workspace A''s owner_id';
+  exception
+    when raise_exception then
+      if sqlerrm not like '%owner_id is immutable%' then
+        raise exception 'FAIL (test 10): unexpected error: %', sqlerrm;
+      end if;
+  end;
+
+  -- the row must still belong to user A
+  if exists (
+    select 1 from public.workspaces
+    where id = v_ws and owner_id <> '00000000-0000-0000-0000-0000000000aa'
+  ) then
+    raise exception 'FAIL (test 10): owner_id no longer belongs to user A';
+  end if;
+
+  raise notice 'PASS (test 10): admin cannot change owner_id (guard trigger rejected the update)';
+end $$;
+
+
+/* ── test 11: a member cannot change a workspace's owner_id ─────────────── */
+reset role;
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"00000000-0000-0000-0000-0000000000cc","role":"authenticated","aud":"authenticated"}',
+  true
+);
+
+do $$
+declare
+  v_ws uuid;
+begin
+  select workspace_a into v_ws from test_ids;
+
+  begin
+    update public.workspaces
+    set owner_id = '00000000-0000-0000-0000-0000000000cc'
+    where id = v_ws;
+
+    raise exception 'FAIL (test 11): member C changed workspace A''s owner_id';
+  exception
+    -- a plain member is stopped by RLS (insufficient_privilege) before the
+    -- trigger even runs; either barrier failing closed is a pass
+    when insufficient_privilege then
+      null;
+    when raise_exception then
+      if sqlerrm not like '%owner_id is immutable%' then
+        raise exception 'FAIL (test 11): unexpected error: %', sqlerrm;
+      end if;
+  end;
+
+  if exists (
+    select 1 from public.workspaces
+    where id = v_ws and owner_id <> '00000000-0000-0000-0000-0000000000aa'
+  ) then
+    raise exception 'FAIL (test 11): owner_id no longer belongs to user A';
+  end if;
+
+  raise notice 'PASS (test 11): member cannot change owner_id (RLS/guard rejected the update)';
+end $$;
+
+
+/* ── impersonate user A again for tests 12–15 ───────────────────────────── */
+reset role;
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"00000000-0000-0000-0000-0000000000aa","role":"authenticated","aud":"authenticated"}',
+  true
+);
+
+
+/* ── test 12: a client cannot be moved to another workspace ─────────────── */
+-- A owns BOTH workspaces, so RLS would allow the update — only the guard can
+-- stop a tenant-boundary move.
+do $$
+declare
+  v_client uuid;
+  v_ws_a   uuid;
+  v_ws_b   uuid;
+begin
+  select client_a, workspace_a into v_client, v_ws_a from test_ids;
+  select id into v_ws_b from public.workspaces where name = 'Workspace B';
+
+  begin
+    update public.clients set workspace_id = v_ws_b where id = v_client;
+
+    raise exception 'FAIL (test 12): client A was moved to workspace B';
+  exception
+    when raise_exception then
+      if sqlerrm not like '%workspace_id is immutable%' then
+        raise exception 'FAIL (test 12): unexpected error: %', sqlerrm;
+      end if;
+  end;
+
+  if exists (select 1 from public.clients where id = v_client and workspace_id <> v_ws_a) then
+    raise exception 'FAIL (test 12): client A''s workspace_id changed';
+  end if;
+
+  raise notice 'PASS (test 12): a client cannot be moved between workspaces via UPDATE';
+end $$;
+
+
+/* ── test 13: a project cannot be moved to another workspace ────────────── */
+do $$
+declare
+  v_project uuid;
+  v_ws_a    uuid;
+  v_ws_b    uuid;
+begin
+  select p.id, t.workspace_a into v_project, v_ws_a
+  from public.projects p
+  join test_ids t on t.workspace_a = p.workspace_id
+  where p.name = 'Project A';
+
+  select id into v_ws_b from public.workspaces where name = 'Workspace B';
+
+  begin
+    update public.projects set workspace_id = v_ws_b where id = v_project;
+
+    raise exception 'FAIL (test 13): project A was moved to workspace B';
+  exception
+    when raise_exception then
+      if sqlerrm not like '%workspace_id is immutable%' then
+        raise exception 'FAIL (test 13): unexpected error: %', sqlerrm;
+      end if;
+  end;
+
+  if exists (select 1 from public.projects where id = v_project and workspace_id <> v_ws_a) then
+    raise exception 'FAIL (test 13): project A''s workspace_id changed';
+  end if;
+
+  raise notice 'PASS (test 13): a project cannot be moved between workspaces via UPDATE';
+end $$;
+
+
+/* ── test 14: a member cannot rewrite a client's created_by ─────────────── */
+do $$
+declare
+  v_client uuid;
+begin
+  select client_a into v_client from test_ids;
+
+  begin
+    update public.clients
+    set created_by = '00000000-0000-0000-0000-0000000000bb'
+    where id = v_client;
+
+    raise exception 'FAIL (test 14): client A''s created_by was rewritten';
+  exception
+    when raise_exception then
+      if sqlerrm not like '%created_by is immutable%' then
+        raise exception 'FAIL (test 14): unexpected error: %', sqlerrm;
+      end if;
+  end;
+
+  if exists (
+    select 1 from public.clients
+    where id = v_client and created_by <> '00000000-0000-0000-0000-0000000000aa'
+  ) then
+    raise exception 'FAIL (test 14): client A''s created_by no longer points at user A';
+  end if;
+
+  raise notice 'PASS (test 14): created_by on clients is immutable after creation';
+end $$;
+
+
+/* ── test 15: a member cannot rewrite a project's created_by ────────────── */
+do $$
+declare
+  v_project uuid;
+begin
+  select p.id into v_project
+  from public.projects p
+  join test_ids t on t.workspace_a = p.workspace_id
+  where p.name = 'Project A';
+
+  begin
+    update public.projects
+    set created_by = '00000000-0000-0000-0000-0000000000bb'
+    where id = v_project;
+
+    raise exception 'FAIL (test 15): project A''s created_by was rewritten';
+  exception
+    when raise_exception then
+      if sqlerrm not like '%created_by is immutable%' then
+        raise exception 'FAIL (test 15): unexpected error: %', sqlerrm;
+      end if;
+  end;
+
+  if exists (
+    select 1 from public.projects
+    where id = v_project and created_by <> '00000000-0000-0000-0000-0000000000aa'
+  ) then
+    raise exception 'FAIL (test 15): project A''s created_by no longer points at user A';
+  end if;
+
+  raise notice 'PASS (test 15): created_by on projects is immutable after creation';
+end $$;
+
+
+/* ── test 16: workspace deletion cascades cleanly ───────────────────────── */
 reset role;
 set local role authenticated;
 select set_config(
@@ -243,19 +493,19 @@ begin
   select workspace_a into v_ws from test_ids;
 
   if exists (select 1 from public.workspaces where id = v_ws) then
-    raise exception 'FAIL (test 10): workspace A still exists after deletion';
+    raise exception 'FAIL (test 16): workspace A still exists after deletion';
   end if;
   if exists (select 1 from public.clients where workspace_id = v_ws) then
-    raise exception 'FAIL (test 10): clients did not cascade with workspace A';
+    raise exception 'FAIL (test 16): clients did not cascade with workspace A';
   end if;
   if exists (select 1 from public.projects where workspace_id = v_ws) then
-    raise exception 'FAIL (test 10): projects did not cascade with workspace A';
+    raise exception 'FAIL (test 16): projects did not cascade with workspace A';
   end if;
   if exists (select 1 from public.workspace_members where workspace_id = v_ws) then
-    raise exception 'FAIL (test 10): members did not cascade with workspace A';
+    raise exception 'FAIL (test 16): members did not cascade with workspace A';
   end if;
 
-  raise notice 'PASS (test 10): deleting workspace A cascaded to its client, project and membership';
+  raise notice 'PASS (test 16): deleting workspace A cascaded to its client, project and membership';
 end $$;
 
 
