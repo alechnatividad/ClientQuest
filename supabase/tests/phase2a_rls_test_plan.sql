@@ -331,19 +331,23 @@ begin
 end $$;
 
 
-/* ── impersonate user A again for tests 12–15 ───────────────────────────── */
+/* ── impersonate user B for tests 12–13 ───────────────────────────────────
+   User B owns Workspace B and is an admin of Workspace A.
+   Therefore B legitimately belongs to BOTH workspaces, so RLS permits updates
+   in either workspace. The workspace_id guard itself must reject the move.
+*/
 reset role;
 set local role authenticated;
 select set_config(
   'request.jwt.claims',
-  '{"sub":"00000000-0000-0000-0000-0000000000aa","role":"authenticated","aud":"authenticated"}',
+  '{"sub":"00000000-0000-0000-0000-0000000000bb","role":"authenticated","aud":"authenticated"}',
   true
 );
 
 
 /* ── test 12: a client cannot be moved to another workspace ─────────────── */
--- A owns BOTH workspaces, so RLS would allow the update — only the guard can
--- stop a tenant-boundary move.
+-- B belongs to BOTH workspaces, so RLS permits the update.
+-- The immutable workspace_id guard must be what rejects the move.
 do $$
 declare
   v_client uuid;
@@ -403,7 +407,17 @@ begin
 
   raise notice 'PASS (test 13): a project cannot be moved between workspaces via UPDATE';
 end $$;
-
+/* ── impersonate user C for tests 14–15 ───────────────────────────────────
+   User C is a plain member of Workspace A. Members may normally update
+   clients/projects, so the created_by guard itself must reject tampering.
+*/
+reset role;
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"00000000-0000-0000-0000-0000000000cc","role":"authenticated","aud":"authenticated"}',
+  true
+);
 
 /* ── test 14: a member cannot rewrite a client's created_by ─────────────── */
 do $$
