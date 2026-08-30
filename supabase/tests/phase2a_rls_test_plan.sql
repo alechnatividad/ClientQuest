@@ -22,9 +22,10 @@
     15. A member cannot rewrite a project's created_by.
     16. Workspace deletion cascades to its clients/projects/members.
 
-  Tests 10–15 exercise the database-level immutability guards (BEFORE UPDATE
-  triggers), not RLS — they must raise, and the protected value must remain
-  unchanged afterwards. RLS is never weakened to make a test pass.
+  Tests 10 and 12–15 exercise the database-level immutability guards
+(BEFORE UPDATE triggers), not RLS. Test 11 verifies RLS zero-row
+behavior: a plain member fails the workspace update policy and the
+UPDATE affects 0 rows instead of changing the workspace.
 
   HOW TO RUN
     1. Apply supabase/migrations/20260216120000_phase2a_core_schema.sql first.
@@ -66,7 +67,7 @@ create temporary table test_ids (
   workspace_a uuid,
   client_a    uuid
 );
-
+grant select, insert, update on test_ids to authenticated;
 
 /* ── impersonate user A ─────────────────────────────────────────────────── */
 set local role authenticated;
@@ -288,7 +289,7 @@ begin
 end $$;
 
 
-/* ── test 11: a member cannot change a workspace's owner_id ─────────────── */
+/* ── test 11: a member's owner_id UPDATE affects 0 rows under RLS ───────── */
 reset role;
 set local role authenticated;
 select set_config(
@@ -299,35 +300,34 @@ select set_config(
 
 do $$
 declare
-  v_ws uuid;
+  v_ws   uuid;
+  v_rows bigint;
 begin
   select workspace_a into v_ws from test_ids;
 
-  begin
-    update public.workspaces
-    set owner_id = '00000000-0000-0000-0000-0000000000cc'
-    where id = v_ws;
+  update public.workspaces
+  set owner_id = '00000000-0000-0000-0000-0000000000cc'
+  where id = v_ws;
 
-    raise exception 'FAIL (test 11): member C changed workspace A''s owner_id';
-  exception
-    -- a plain member is stopped by RLS (insufficient_privilege) before the
-    -- trigger even runs; either barrier failing closed is a pass
-    when insufficient_privilege then
-      null;
-    when raise_exception then
-      if sqlerrm not like '%owner_id is immutable%' then
-        raise exception 'FAIL (test 11): unexpected error: %', sqlerrm;
-      end if;
-  end;
+  get diagnostics v_rows = row_count;
 
-  if exists (
-    select 1 from public.workspaces
-    where id = v_ws and owner_id <> '00000000-0000-0000-0000-0000000000aa'
-  ) then
-    raise exception 'FAIL (test 11): owner_id no longer belongs to user A';
+  if v_rows <> 0 then
+    raise exception
+      'FAIL (test 11): member C updated % workspace row(s)', v_rows;
   end if;
 
-  raise notice 'PASS (test 11): member cannot change owner_id (RLS/guard rejected the update)';
+  if not exists (
+    select 1
+    from public.workspaces
+    where id = v_ws
+      and owner_id = '00000000-0000-0000-0000-0000000000aa'
+  ) then
+    raise exception
+      'FAIL (test 11): workspace A owner_id no longer points to user A';
+  end if;
+
+  raise notice
+    'PASS (test 11): plain member cannot update owner_id (RLS affected zero rows)';
 end $$;
 
 
