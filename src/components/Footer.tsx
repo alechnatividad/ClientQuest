@@ -1,103 +1,52 @@
-import { ArrowUp, Dribbble, Gem, Github, Twitter } from "lucide-react";
-
-const PRODUCT_LINKS = [
-  { label: "Visual Kanban board", href: "#features" },
-  { label: "Live demo", href: "#demo" },
-  { label: "The workflow", href: "#loop" },
-  { label: "Get started", href: "#cta" },
-];
-
-const RESOURCE_LINKS = [
-  { label: "Client stories", href: "#stories" },
-  { label: "Why it works", href: "#features" },
-  { label: "Back to top", href: "#top" },
-];
-
-const SOCIALS = [
-  { icon: Twitter, href: "https://twitter.com", label: "ClientQuest on Twitter" },
-  { icon: Github, href: "https://github.com", label: "ClientQuest on GitHub" },
-  { icon: Dribbble, href: "https://dribbble.com", label: "ClientQuest on Dribbble" },
-];
+import { useUtcClock } from "../lib/hooks";
 
 export default function Footer() {
+  const clock = useUtcClock();
   return (
-    <footer className="relative border-t border-slate-800/80 bg-slate-950">
-      <div className="mx-auto max-w-6xl px-5 py-14 sm:px-8">
-        <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr]">
-          <div>
-            <a href="#top" className="group inline-flex items-center gap-2.5">
-              <span className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-quest to-quest-deep shadow-lg shadow-quest/25 transition-transform duration-300 group-hover:-rotate-12">
-                <Gem className="h-[18px] w-[18px] text-white" strokeWidth={2.25} />
-              </span>
-              <span className="font-display text-lg font-bold tracking-tight">
-                <span className="text-white">Client</span>
-                <span className="text-[#10B981]">Quest</span>
-              </span>
-            </a>
-            <p className="mt-4 max-w-xs text-sm leading-relaxed text-slate-500">
-              The modern client approval portal for freelancers and agencies. Share work, collect definitive
-              feedback, and lock scope in one click.
+    <footer className="border-t border-edge bg-pit/50">
+      <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8">
+        <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+          <div className="max-w-xl">
+            <p className="font-display flex items-center gap-2.5 text-sm font-bold tracking-[0.2em] text-snow uppercase">
+              <svg viewBox="0 0 24 24" className="h-5 w-5 text-ok" fill="none" aria-hidden="true">
+                <path d="M12 2l8.5 5v10L12 22l-8.5-5V7L12 2z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+                <path d="M9 10l3 2.5L9 15M13.5 15h3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              qwen//coder ops
             </p>
-            <div className="mt-6 flex items-center gap-3">
-              {SOCIALS.map((s) => (
-                <a
-                  key={s.label}
-                  href={s.href}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label={s.label}
-                  className="grid h-10 w-10 place-items-center rounded-full border border-slate-800 bg-slate-900 text-slate-400 transition-all duration-300 hover:-translate-y-0.5 hover:border-quest hover:text-quest"
-                >
-                  <s.icon className="h-4 w-4" />
-                </a>
-              ))}
+            <p className="mt-3 text-[13px] leading-relaxed text-dim">
+              Unofficial demonstration board. Every metric, probe and incident on this
+              page is generated locally in your browser and does{" "}
+              <span className="text-fog">not</span> reflect live Qwen, DashScope or
+              Alibaba Cloud telemetry. For ground truth, use the official channels
+              listed above.
+            </p>
+          </div>
+
+          <div className="flex gap-12 font-mono text-xs">
+            <div>
+              <p className="text-[10px] tracking-[0.25em] text-dim uppercase">rendered</p>
+              <p className="mt-1.5 text-fog tabular-nums">{clock}</p>
             </div>
-          </div>
-
-          <div>
-            <p className="text-xs font-bold tracking-[0.22em] text-slate-500">PRODUCT</p>
-            <ul className="mt-4 space-y-2.5">
-              {PRODUCT_LINKS.map((l) => (
-                <li key={l.label}>
-                  <a
-                    href={l.href}
-                    className="text-sm text-slate-400 transition-colors duration-200 hover:text-white"
-                  >
-                    {l.label}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div>
-            <p className="text-xs font-bold tracking-[0.22em] text-slate-500">RESOURCES</p>
-            <ul className="mt-4 space-y-2.5">
-              {RESOURCE_LINKS.map((l) => (
-                <li key={l.label}>
-                  <a
-                    href={l.href}
-                    className="text-sm text-slate-400 transition-colors duration-200 hover:text-white"
-                  >
-                    {l.label}
-                  </a>
-                </li>
-              ))}
-            </ul>
+            <div>
+              <p className="text-[10px] tracking-[0.25em] text-dim uppercase">build</p>
+              <p className="mt-1.5 text-fog">v2.4.1-sim</p>
+            </div>
+            <div>
+              <p className="text-[10px] tracking-[0.25em] text-dim uppercase">poller</p>
+              <p className="mt-1.5 flex items-center gap-1.5 text-ok">
+                <span className="h-1.5 w-1.5 rounded-full bg-ok motion-blink" />
+                healthy
+              </p>
+            </div>
           </div>
         </div>
 
-        <div className="mt-12 flex flex-wrap items-center justify-between gap-4 border-t border-slate-800/80 pt-6">
-          <p className="text-sm text-slate-600">© 2026 ClientQuest. All rights reserved.</p>
-          <a
-            href="#top"
-            className="group flex items-center gap-2 text-sm text-slate-500 transition-colors duration-200 hover:text-white"
-          >
-            Back to top
-            <span className="grid h-8 w-8 place-items-center rounded-full border border-slate-800 transition-all duration-300 group-hover:-translate-y-0.5 group-hover:border-quest group-hover:text-quest">
-              <ArrowUp className="h-3.5 w-3.5" />
-            </span>
-          </a>
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-edge/60 pt-5 font-mono text-[11px] text-dim">
+          <span>status board concept · not affiliated with Alibaba Cloud or the Qwen team</span>
+          <span>
+            sig <span className="text-fog">9f31·ok·2214</span>
+          </span>
         </div>
       </div>
     </footer>
