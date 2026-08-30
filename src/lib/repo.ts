@@ -1,0 +1,407 @@
+import { useCallback, useEffect, useState } from "react";
+import type { PostgrestError } from "@supabase/supabase-js";
+import { supabase } from "./supabase";
+import type {
+  Client,
+  ClientStatus,
+  Project,
+  ProjectStatus,
+} from "../types/database";
+
+/**
+ * Phase 2B data layer — the ONLY place raw Supabase queries live.
+ *
+ * Rules baked into every function:
+ *  - Queries are always scoped to the caller's active workspace, even though
+ *    RLS already enforces isolation (defense in depth, explicit tenancy).
+ *  - Only the authenticated browser client is used — never a service key.
+ *  - Mutations re-read the affected row instead of optimistic patching, so
+ *    the UI can never drift from what the database actually stored.
+ *  - Zero-row updates/deletes (RLS hiding the row from this role) surface as
+ *    a permission error instead of a silent "success".
+ *  - Protected columns (workspace_id, created_by, timestamps) are never
+ *    accepted as input here — only user-editable Phase 2B fields.
+ */
+
+export type RowResult<T> = { data: T; error: null } | { data: null; error: string };
+export type ListResult<T> = { data: T[]; error: null } | { data: null; error: string };
+export type DeleteResult = { error: string | null };
+
+const NOT_CONFIGURED = "Supabase is not configured on this deployment.";
+
+/* ── editable input shapes (protected columns deliberately excluded) ───── */
+
+export interface ClientInput {
+  name: string;
+  email: string | null;
+  company: string | null;
+  notes: string | null;
+  status: ClientStatus;
+}
+
+export type ClientPatch = Partial<ClientInput>;
+
+export interface ProjectInput {
+  name: string;
+  description: string | null;
+  client_id: string | null;
+  status: ProjectStatus;
+  due_date: string | null;
+}
+
+export type ProjectPatch = Partial<ProjectInput>;
+
+/* ── error mapping ─────────────────────────────────────────────────────── */
+
+export function describeError(error: PostgrestError | Error | string | null | undefined): string {
+  if (!error) return "Something went wrong talking to the database.";
+  if (typeof error === "string") return error;
+
+  const pg = error as Partial<PostgrestError>;
+  switch (pg.code) {
+    case "42501":
+      return "Your role doesn't have permission to do that in this workspace.";
+    case "23505":
+      return "That value already exists — try a different one.";
+    case "23503":
+      return "This record is referenced by other data, so the change was rejected.";
+    case "23514":
+      return "One of the values is not allowed by the database (check statuses and formats).";
+    case "PGRST204":
+    case "PGRST205":
+      return "The schema on this deployment doesn't match the app. Re-run the Phase 2A migration.";
+    default: {
+      const message = pg.message ?? error.message;
+      if (!message) return "Something went wrong talking to the database.";
+      // Strip Postgres quoting noise for a friendlier inline message.
+      return message.replace(/^.*?violates row-level security policy.*$/i,
+        "Row-level security blocked that action for your role.");
+    }
+  }
+}
+
+function notConfigured<T>(): RowResult<T> {
+  return { data: null, error: NOT_CONFIGURED };
+}
+
+/* ── clients ───────────────────────────────────────────────────────────── */
+
+export async function fetchClients(workspaceId: string): Promise<ListResult<Client>> {
+  if (!supabase) return { data: null, error: NOT_CONFIGURED };
+  const { data, error } = await supabase
+    .from("clients")
+    .select("*")
+    .eq("workspace_id", workspaceId)
+    .order("name", { ascending: true });
+  if (error) return { data: null, error: describeError(error) };
+  return { data: data ?? [], error: null };
+}
+
+export async function createClient(
+  workspaceId: string,
+  userId: string,
+  input: ClientInput,
+): Promise<RowResult<Client>> {
+  if (!supabase) return notConfigured();
+  const { data, error } = await supabase
+    .from("clients")
+    .insert({
+      workspace_id: workspaceId,
+      created_by: userId,
+      name: input.name,
+      email: input.email,
+      company: input.company,
+      notes: input.notes,
+      status: input.status,
+    })
+    .select("*")
+    .single();
+  if (error) return { data: null, error: describeError(error) };
+  return { data, error: null };
+}
+
+export async function updateClient(
+  workspaceId: string,
+  clientId: string,
+  patch: ClientPatch,
+): Promise<RowResult<Client>> {
+  if (!supabase) return notConfigured();
+  const { data, error } = await supabase
+    .from("clients")
+    .update({
+      name: patch.name,
+      email: patch.email,
+      company: patch.company,
+      notes: patch.notes,
+      status: patch.status,
+    })
+    .eq("id", clientId)
+    .eq("workspace_id", workspaceId)
+    .select("*")
+    .maybeSingle();
+  if (error) return { data: null, error: describeError(error) };
+  if (!data) {
+    return {
+      data: null,
+      error: "No client was updated — it may be gone, or your role can't modify it.",
+    };
+  }
+  return { data, error: null };
+}
+
+export async function setClientStatus(
+  workspaceId: string,
+  clientId: string,
+  status: ClientStatus,
+): Promise<RowResult<Client>> {
+  return updateClient(workspaceId, clientId, { status });
+}
+
+export async function deleteClient(workspaceId: string, clientId: string): Promise<DeleteResult> {
+  if (!supabase) return { error: NOT_CONFIGURED };
+  const { data, error } = await supabase
+    .from("clients")
+    .delete()
+    .eq("id", clientId)
+    .eq("workspace_id", workspaceId)
+    .select("id")
+    .maybeSingle();
+  if (error) return { error: describeError(error) };
+  if (!data) {
+    return { error: "No client was deleted — only workspace owners and admins can delete clients." };
+  }
+  return { error: null };
+}
+
+/* ── projects ──────────────────────────────────────────────────────────── */
+
+export async function fetchProjects(workspaceId: string): Promise<ListResult<Project>> {
+  if (!supabase) return { data: null, error: NOT_CONFIGURED };
+  const { data, error } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: false });
+  if (error) return { data: null, error: describeError(error) };
+  return { data: data ?? [], error: null };
+}
+
+export interface ProjectLookup {
+  data: Project | null;
+  error: string | null;
+  notFound: boolean;
+}
+
+export async function fetchProject(workspaceId: string, projectId: string): Promise<ProjectLookup> {
+  if (!supabase) return { data: null, error: NOT_CONFIGURED, notFound: false };
+  const { data, error } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("id", projectId)
+    .eq("workspace_id", workspaceId)
+    .maybeSingle();
+  if (error) return { data: null, error: describeError(error), notFound: false };
+  // maybeSingle() returns null with no error both when the id doesn't exist
+  // and when RLS hides the row — either way the page shows not-found.
+  return { data, error: null, notFound: data === null };
+}
+
+export async function createProject(
+  workspaceId: string,
+  userId: string,
+  input: ProjectInput,
+): Promise<RowResult<Project>> {
+  if (!supabase) return notConfigured();
+  const { data, error } = await supabase
+    .from("projects")
+    .insert({
+      workspace_id: workspaceId,
+      created_by: userId,
+      name: input.name,
+      description: input.description,
+      client_id: input.client_id,
+      status: input.status,
+      due_date: input.due_date,
+    })
+    .select("*")
+    .single();
+  if (error) return { data: null, error: describeError(error) };
+  return { data, error: null };
+}
+
+export async function updateProject(
+  workspaceId: string,
+  projectId: string,
+  patch: ProjectPatch,
+): Promise<RowResult<Project>> {
+  if (!supabase) return notConfigured();
+  const { data, error } = await supabase
+    .from("projects")
+    .update({
+      name: patch.name,
+      description: patch.description,
+      client_id: patch.client_id,
+      status: patch.status,
+      due_date: patch.due_date,
+    })
+    .eq("id", projectId)
+    .eq("workspace_id", workspaceId)
+    .select("*")
+    .maybeSingle();
+  if (error) return { data: null, error: describeError(error) };
+  if (!data) {
+    return {
+      data: null,
+      error: "No project was updated — it may be gone, or your role can't modify it.",
+    };
+  }
+  return { data, error: null };
+}
+
+export async function deleteProject(
+  workspaceId: string,
+  projectId: string,
+): Promise<DeleteResult> {
+  if (!supabase) return { error: NOT_CONFIGURED };
+  const { data, error } = await supabase
+    .from("projects")
+    .delete()
+    .eq("id", projectId)
+    .eq("workspace_id", workspaceId)
+    .select("id")
+    .maybeSingle();
+  if (error) return { error: describeError(error) };
+  if (!data) {
+    return { error: "No project was deleted — only workspace owners and admins can delete projects." };
+  }
+  return { error: null };
+}
+
+/* ── hooks ─────────────────────────────────────────────────────────────── */
+
+interface ListHook<T> {
+  rows: T[];
+  loading: boolean;
+  error: string | null;
+  refresh: () => void;
+}
+
+function useWorkspaceList<T>(
+  workspaceId: string | null,
+  fetcher: (workspaceId: string) => Promise<ListResult<T>>,
+): ListHook<T> {
+  const [rows, setRows] = useState<T[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [nonce, setNonce] = useState(0);
+
+  useEffect(() => {
+    if (!workspaceId) {
+      setRows([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+    let live = true;
+    setLoading(true);
+    setError(null);
+    fetcher(workspaceId).then((res) => {
+      if (!live) return;
+      setRows(res.data ?? []);
+      setError(res.error);
+      setLoading(false);
+    });
+    return () => {
+      live = false;
+    };
+  }, [workspaceId, nonce, fetcher]);
+
+  const refresh = useCallback(() => setNonce((n) => n + 1), []);
+  return { rows, loading, error, refresh };
+}
+
+const stableFetchClients = fetchClients;
+const stableFetchProjects = fetchProjects;
+
+/** All clients in the active workspace, sorted by name. */
+export function useClients(workspaceId: string | null): ListHook<Client> {
+  return useWorkspaceList(workspaceId, stableFetchClients);
+}
+
+/** All projects in the active workspace, newest first. */
+export function useProjects(workspaceId: string | null): ListHook<Project> {
+  return useWorkspaceList(workspaceId, stableFetchProjects);
+}
+
+interface ProjectHook {
+  project: Project | null;
+  loading: boolean;
+  error: string | null;
+  notFound: boolean;
+  refresh: () => void;
+}
+
+/** A single project by id, scoped to the active workspace. */
+export function useProject(
+  workspaceId: string | null,
+  projectId: string | undefined,
+): ProjectHook {
+  const [project, setProject] = useState<Project | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
+  const [nonce, setNonce] = useState(0);
+
+  useEffect(() => {
+    if (!workspaceId || !projectId) {
+      setProject(null);
+      setNotFound(!projectId);
+      setLoading(false);
+      return;
+    }
+    let live = true;
+    setLoading(true);
+    setError(null);
+    setNotFound(false);
+    fetchProject(workspaceId, projectId).then((res) => {
+      if (!live) return;
+      setProject(res.data);
+      setError(res.error);
+      setNotFound(res.notFound);
+      setLoading(false);
+    });
+    return () => {
+      live = false;
+    };
+  }, [workspaceId, projectId, nonce]);
+
+  const refresh = useCallback(() => setNonce((n) => n + 1), []);
+  return { project, loading, error, notFound, refresh };
+}
+
+/* ── small display helpers ─────────────────────────────────────────────── */
+
+export const PROJECT_STATUSES: ProjectStatus[] = [
+  "draft",
+  "active",
+  "waiting_review",
+  "approved",
+  "archived",
+];
+
+export const CLIENT_STATUSES: ClientStatus[] = ["active", "archived"];
+
+export function formatDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso.length <= 10 ? `${iso}T00:00:00` : iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+/** True when a date-only ISO string is before today (local time). */
+export function isOverdue(dueDate: string | null | undefined): boolean {
+  if (!dueDate) return false;
+  const d = new Date(`${dueDate.slice(0, 10)}T23:59:59`);
+  if (Number.isNaN(d.getTime())) return false;
+  return d.getTime() < Date.now();
+}
