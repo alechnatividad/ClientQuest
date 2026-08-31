@@ -12,7 +12,7 @@ import { Link } from "react-router-dom";
 import { AlertTriangle, Gem, Settings2 } from "lucide-react";
 import { useAuth } from "./auth";
 import { isSupabaseConfigured, supabase } from "./supabase";
-import type { Workspace, WorkspaceMemberRole } from "../types/database";
+import type { Workspace, WorkspaceMemberRole } from "../types/app";
 
 /**
  * Centralized workspace bootstrap for the owner app.
