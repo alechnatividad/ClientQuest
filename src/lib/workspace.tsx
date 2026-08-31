@@ -14,7 +14,10 @@ import type { PostgrestError } from "@supabase/supabase-js";
 import { useAuth } from "./auth";
 import { isSupabaseConfigured, supabase } from "./supabase";
 import { describeError } from "./repo";
-import type { Workspace, WorkspaceMemberRole } from "../types/database";
+import type { Database } from "../types/database";
+
+type Workspace = Database["public"]["Tables"]["workspaces"]["Row"];
+type WorkspaceMemberRole = Database["public"]["Tables"]["workspace_members"]["Row"]["role"];
 
 /**
  * Centralized workspace bootstrap for the owner app.
