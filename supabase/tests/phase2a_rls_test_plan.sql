@@ -23,11 +23,9 @@
     16. Workspace deletion cascades to its clients/projects/members.
 
   Tests 10 and 12–15 exercise the database-level immutability guards
-  (BEFORE UPDATE triggers), not RLS — they must raise, and the protected
-  value must remain unchanged afterwards. Test 11 tests RLS zero-row
-  behavior: a plain member fails the workspace update policy's USING
-  clause, so RLS hides the row and the UPDATE affects 0 rows instead of
-  raising an exception. RLS is never weakened to make a test pass.
+(BEFORE UPDATE triggers), not RLS. Test 11 verifies RLS zero-row
+behavior: a plain member fails the workspace update policy and the
+UPDATE affects 0 rows instead of changing the workspace.
 
   HOW TO RUN
     1. Apply supabase/migrations/20260216120000_phase2a_core_schema.sql first.
@@ -69,12 +67,7 @@ create temporary table test_ids (
   workspace_a uuid,
   client_a    uuid
 );
-
--- The temp table is created by the SQL editor (postgres role), but the tests
--- below switch to `authenticated` and must read/write test_ids across those
--- role changes — hence the explicit grant.
 grant select, insert, update on test_ids to authenticated;
-
 
 /* ── impersonate user A ─────────────────────────────────────────────────── */
 set local role authenticated;
@@ -297,10 +290,6 @@ end $$;
 
 
 /* ── test 11: a member's owner_id UPDATE affects 0 rows under RLS ───────── */
--- A plain member fails the update policy's USING clause (can_manage_workspace),
--- so RLS hides the row and the UPDATE affects 0 rows. That silent zero-row
--- outcome is the failure mode this test asserts — NOT an exception: PostgREST
--- reports it to the client as a successful request that changed nothing.
 reset role;
 set local role authenticated;
 select set_config(
@@ -316,7 +305,6 @@ declare
 begin
   select workspace_a into v_ws from test_ids;
 
-  -- attempt the ownership hijack as member C
   update public.workspaces
   set owner_id = '00000000-0000-0000-0000-0000000000cc'
   where id = v_ws;
@@ -324,19 +312,22 @@ begin
   get diagnostics v_rows = row_count;
 
   if v_rows <> 0 then
-    raise exception 'FAIL (test 11): RLS let member C affect % row(s) — expected 0', v_rows;
+    raise exception
+      'FAIL (test 11): member C updated % workspace row(s)', v_rows;
   end if;
 
-  -- the row must still belong to user A (member C can still SELECT the
-  -- workspace via the member select policy, so this reads the real row)
-  if exists (
-    select 1 from public.workspaces
-    where id = v_ws and owner_id <> '00000000-0000-0000-0000-0000000000aa'
+  if not exists (
+    select 1
+    from public.workspaces
+    where id = v_ws
+      and owner_id = '00000000-0000-0000-0000-0000000000aa'
   ) then
-    raise exception 'FAIL (test 11): owner_id no longer belongs to user A';
+    raise exception
+      'FAIL (test 11): workspace A owner_id no longer points to user A';
   end if;
 
-  raise notice 'PASS (test 11): member cannot change owner_id (RLS affected 0 rows)';
+  raise notice
+    'PASS (test 11): plain member cannot update owner_id (RLS affected zero rows)';
 end $$;
 
 
