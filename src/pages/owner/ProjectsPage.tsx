@@ -14,7 +14,7 @@ import {
   useProjects,
   type ProjectInput,
 } from "../../lib/repo";
-import type { Project, ProjectStatus } from "../../types/database";
+import type { Project, ProjectStatus } from "../../types/app";
 import ProjectForm from "../../components/app/ProjectForm";
 import {
   PROJECT_STATUS_META,

@@ -13,7 +13,7 @@ import {
   type ClientInput,
   type ClientPatch,
 } from "../../lib/repo";
-import type { Client, ClientStatus } from "../../types/database";
+import type { Client, ClientStatus } from "../../types/app";
 import {
   CLIENT_STATUS_META,
   ClientStatusPill,

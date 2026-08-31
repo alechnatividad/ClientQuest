@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import type { Client, Project, ProjectStatus } from "../../types/database";
+import type { Client, Project, ProjectStatus } from "../../types/app";
 import { PROJECT_STATUSES, type ProjectInput } from "../../lib/repo";
 import { Field, FormAlert, PROJECT_STATUS_META, Spinner, btnPrimary, inputCls, inputErrorCls } from "./ui";
 

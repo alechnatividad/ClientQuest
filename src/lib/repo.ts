@@ -6,7 +6,7 @@ import type {
   ClientStatus,
   Project,
   ProjectStatus,
-} from "../types/database";
+} from "../types/app";
 
 /**
  * Phase 2B data layer — the ONLY place raw Supabase queries live.
