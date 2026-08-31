@@ -10,9 +10,11 @@ import {
 } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, Gem, Settings2 } from "lucide-react";
+import type { PostgrestError } from "@supabase/supabase-js";
 import { useAuth } from "./auth";
 import { isSupabaseConfigured, supabase } from "./supabase";
-import type { Workspace, WorkspaceMemberRole } from "../types/app";
+import { describeError } from "./repo";
+import type { Workspace, WorkspaceMemberRole } from "../types/database";
 
 /**
  * Centralized workspace bootstrap for the owner app.
@@ -21,16 +23,31 @@ import type { Workspace, WorkspaceMemberRole } from "../types/app";
  * instead of implementing its own lookup, so Clients, Projects and the
  * Dashboard can never disagree about which workspace is active.
  *
- * Flow (matches the Phase 2A schema exactly):
- *   1. Look the user up in `workspace_members` (RLS only returns rows the
- *      user actually belongs to).
- *   2. Load the matching `workspaces` row.
- *   3. If the user has no membership yet, create a workspace with
- *      `owner_id = auth user`. The `workspaces_owner_membership` database
- *      trigger creates the owner membership — we NEVER insert into
- *      workspace_members ourselves.
- *   4. A concurrent-tab race that loses the insert simply re-reads the
- *      membership instead of creating a second workspace.
+ * Bootstrap contract (matches the Phase 2A schema exactly):
+ *   1. Look the user up in `workspace_members` with maybeSingle — ZERO ROWS
+ *      IS THE NORMAL FIRST-LOGIN STATE, not an application error. (A
+ *      `.single()` here would raise PGRST116 on every first login and block
+ *      bootstrap before anything is created.)
+ *   2. If a membership exists, load the workspace it points at.
+ *   3. If not: re-check membership once more (another tab/refresh may have
+ *      just committed), then insert exactly ONE workspace with
+ *      `owner_id = auth user` and the default name "My Workspace". The
+ *      `workspaces_owner_membership` database trigger creates the owner
+ *      membership — this code NEVER writes to workspace_members itself.
+ *   4. If the insert errors or its RETURNING row comes back filtered by the
+ *      SELECT policy, verify through the membership row before failing.
+ *
+ * Duplicate-creation resistance:
+ *   - One shared in-flight bootstrap promise per user id, so React
+ *     StrictMode double effects, rapid "Try again" taps and concurrent
+ *     consumers attach to the same run instead of racing to insert.
+ *   - Membership is re-checked immediately before the insert, so a refresh
+ *     during workspace creation resolves to the just-created workspace
+ *     instead of inserting a second one.
+ *
+ * Error handling: the real Supabase error (code, message, details, hint) is
+ * preserved in the browser console for debugging; the UI only ever shows
+ * curated, non-sensitive wording plus the opaque PostgREST code.
  */
 
 type WorkspaceStatus = "loading" | "creating" | "ready" | "error" | "unconfigured";
@@ -53,74 +70,153 @@ interface LoadedWorkspace {
   role: WorkspaceMemberRole;
 }
 
-async function loadOrCreateWorkspace(
-  userId: string,
-  onCreating: () => void,
-): Promise<LoadedWorkspace> {
-  if (!supabase) throw new Error("Supabase is not configured on this deployment.");
+/* ── error plumbing ─────────────────────────────────────────────────────── */
 
-  // 1) membership lookup — RLS guarantees these are the caller's own rows.
-  const { data: membership, error: membershipError } = await supabase
+/** Log the ACTUAL Supabase error for developers; never rendered in the UI. */
+function logBootstrapFailure(where: string, err: unknown): void {
+  if (err && typeof err === "object" && "code" in err) {
+    const pg = err as Partial<PostgrestError>;
+    console.error(`[workspace] ${where}`, {
+      code: pg.code,
+      message: pg.message,
+      details: pg.details,
+      hint: pg.hint,
+    });
+  } else {
+    console.error(`[workspace] ${where}`, err);
+  }
+}
+
+/** Curated user-facing text for a bootstrap failure (no internals leak). */
+function friendlyBootstrapError(err: unknown): string {
+  if (err instanceof Error) {
+    const pg = err as Partial<PostgrestError>;
+    if (pg.code) {
+      // Friendly mapping from the shared data layer + the opaque code, which
+      // is safe to display and lets support pinpoint the exact failure.
+      return `${describeError(err as PostgrestError)} (code ${pg.code})`;
+    }
+    if (err.message) return err.message; // our own curated messages
+  }
+  return "Something went wrong while opening your workspace. The exact error was logged to the browser console.";
+}
+
+/* ── bootstrap core ─────────────────────────────────────────────────────── */
+
+/**
+ * Membership probe. maybeSingle on purpose: a first-login user legitimately
+ * has ZERO rows, which is the trigger for workspace creation — not an error.
+ */
+async function findMembership(userId: string) {
+  if (!supabase) throw new Error("Supabase is not configured on this deployment.");
+  const { data, error } = await supabase
     .from("workspace_members")
     .select("workspace_id, role")
     .eq("user_id", userId)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
+  if (error) throw error;
+  return data;
+}
 
-  if (membershipError) throw membershipError;
-
-  if (membership) {
-    // 2) load the workspace the membership points at.
-    const { data: workspace, error: workspaceError } = await supabase
-      .from("workspaces")
-      .select("*")
-      .eq("id", membership.workspace_id)
-      .maybeSingle();
-
-    if (workspaceError) throw workspaceError;
-    if (workspace) return { workspace, role: membership.role };
-
+async function loadWorkspaceById(workspaceId: string): Promise<Workspace> {
+  if (!supabase) throw new Error("Supabase is not configured on this deployment.");
+  const { data, error } = await supabase
+    .from("workspaces")
+    .select("*")
+    .eq("id", workspaceId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) {
     throw new Error(
       "Your membership points at a workspace that could not be loaded. Check the workspace still exists, then try again.",
     );
   }
+  return data;
+}
 
-  // 3) first visit — create the workspace. The database trigger
-  //    `workspaces_owner_membership` adds the owner membership row.
+async function loadOrCreateWorkspace(
+  userId: string,
+  onCreating: () => void,
+): Promise<LoadedWorkspace> {
+  if (!supabase) throw new Error("Supabase is not configured on this deployment.");
+
+  // 1) Membership lookup — zero rows is the expected first-login state.
+  const membership = await findMembership(userId);
+  if (membership) {
+    return { workspace: await loadWorkspaceById(membership.workspace_id), role: membership.role };
+  }
+
   onCreating();
 
+  // 2) Re-check just before creating: a concurrent tab, or a refresh during
+  //    a previous in-flight bootstrap, may have committed a moment ago.
+  const recheck = await findMembership(userId);
+  if (recheck) {
+    return { workspace: await loadWorkspaceById(recheck.workspace_id), role: recheck.role };
+  }
+
+  // 3) First login — create exactly one workspace. The database trigger
+  //    `workspaces_owner_membership` (SECURITY DEFINER) adds the owner
+  //    membership row; we NEVER insert into workspace_members ourselves.
+  //    maybeSingle on the returning row: PostgREST applies the SELECT policy
+  //    to RETURNING, so a filtered row must not be treated as a hard failure
+  //    — step 4 verifies what actually exists.
   const { data: created, error: createError } = await supabase
     .from("workspaces")
     .insert({ name: DEFAULT_WORKSPACE_NAME, owner_id: userId })
     .select("*")
-    .single();
+    .maybeSingle();
 
   if (!createError && created) return { workspace: created, role: "owner" };
 
-  // 4) insert failed — another tab may have created the workspace a moment
-  //    ago. Re-check the membership before surfacing the error.
-  const { data: retryMembership, error: retryMembershipError } = await supabase
-    .from("workspace_members")
-    .select("workspace_id, role")
-    .eq("user_id", userId)
-    .limit(1)
-    .maybeSingle();
+  if (createError) logBootstrapFailure("workspace insert failed:", createError);
 
-  if (!retryMembershipError && retryMembership) {
-    const { data: retryWorkspace, error: retryWorkspaceError } = await supabase
-      .from("workspaces")
-      .select("*")
-      .eq("id", retryMembership.workspace_id)
-      .maybeSingle();
-
-    if (!retryWorkspaceError && retryWorkspace) {
-      return { workspace: retryWorkspace, role: retryMembership.role };
+  // 4) The insert errored or returned no visible row — check whether a
+  //    workspace + membership actually exist now before surfacing a failure.
+  try {
+    const after = await findMembership(userId);
+    if (after) {
+      return { workspace: await loadWorkspaceById(after.workspace_id), role: after.role };
     }
+  } catch (verifyError) {
+    logBootstrapFailure("post-insert membership verification failed:", verifyError);
   }
 
-  throw createError ?? new Error("Could not create your workspace.");
+  // Nothing exists: the insert genuinely failed. Re-throw the real error so
+  // its code/message reach the console and the curated mapping reaches the UI.
+  throw (
+    createError ??
+    new Error("Could not create your workspace — the database returned no row and no membership exists.")
+  );
 }
+
+/* ── shared in-flight bootstrap (duplicate-creation guard) ──────────────── */
+
+let sharedBootstrap: Promise<LoadedWorkspace> | null = null;
+let sharedBootstrapUserId: string | null = null;
+
+/**
+ * Returns the one in-flight bootstrap for this user, starting it if needed.
+ * StrictMode double effects, "Try again" spam and concurrent consumers all
+ * attach to the same promise, so at most one insert is ever attempted per
+ * first-login episode. The slot clears itself when the run settles.
+ */
+function getBootstrap(userId: string, onCreating: () => void): Promise<LoadedWorkspace> {
+  if (sharedBootstrap && sharedBootstrapUserId === userId) return sharedBootstrap;
+  const shared = loadOrCreateWorkspace(userId, onCreating).finally(() => {
+    if (sharedBootstrap === shared) {
+      sharedBootstrap = null;
+      sharedBootstrapUserId = null;
+    }
+  });
+  sharedBootstrap = shared;
+  sharedBootstrapUserId = userId;
+  return shared;
+}
+
+/* ── provider ───────────────────────────────────────────────────────────── */
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -132,7 +228,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   // Monotonic attempt counter so a stale response can never overwrite a
-  // newer one (e.g. user hits retry mid-flight, or signs out and back in).
+  // newer one (user hits retry mid-flight, or signs out and back in quickly).
   const attemptRef = useRef(0);
 
   const load = useCallback(() => {
@@ -141,7 +237,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setStatus("loading");
     setError(null);
 
-    loadOrCreateWorkspace(user.id, () => {
+    getBootstrap(user.id, () => {
       if (attemptRef.current === attempt) setStatus("creating");
     })
       .then(({ workspace: ws, role: r }) => {
@@ -152,14 +248,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       })
       .catch((err: unknown) => {
         if (attemptRef.current !== attempt) return;
+        logBootstrapFailure("bootstrap failed:", err);
         setWorkspace(null);
         setRole(null);
         setStatus("error");
-        setError(
-          err instanceof Error && err.message
-            ? err.message
-            : "Something went wrong while opening your workspace.",
-        );
+        setError(friendlyBootstrapError(err));
       });
   }, [user]);
 
@@ -220,6 +313,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         </span>
         <h2 className="mt-5 font-display text-xl font-bold text-white">Couldn't open your workspace</h2>
         <p className="mx-auto mt-3 max-w-md text-[15px] leading-relaxed text-slate-400">{error}</p>
+        <p className="mt-2 text-xs text-slate-600">Full error details are in the browser console.</p>
         <button
           onClick={load}
           className="mt-6 inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-quest to-quest-deep px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-quest/25 transition-all duration-200 hover:brightness-110 hover:shadow-quest/40"
