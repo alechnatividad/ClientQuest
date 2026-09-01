@@ -27,12 +27,12 @@ revoke execute on function public.is_workspace_owner(uuid) from public, anon;
 grant execute on function public.is_workspace_owner(uuid) to authenticated;
 
 /*
-  Trigger functions are never application RPCs. Retain authenticated execution
-  so existing trigger-backed DML behavior is preserved while removing their
-  anonymous API exposure.
+  Trigger functions are never application RPCs. PostgreSQL checks EXECUTE
+  when a trigger is created or replaced, not when an existing trigger fires.
+  Remove all application-role execution while preserving the existing triggers.
 */
-revoke execute on function public.handle_workspace_created() from public, anon;
-revoke execute on function public.guard_deliverable_approval_event_context() from public, anon;
+revoke execute on function public.handle_workspace_created() from public, anon, authenticated;
+revoke execute on function public.guard_deliverable_approval_event_context() from public, anon, authenticated;
 
 /*
   Each function below uses only PL/pgSQL, built-in operators/functions, trigger
