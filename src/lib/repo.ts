@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
+import type { PostgrestError } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
+import { DELIVERABLE_STATUSES } from "../types/app";
 import type {
   Client,
   ClientStatus,
+  Deliverable,
+  DeliverableStatus,
   Project,
   ProjectStatus,
 } from "../types/app";
-import type { Deliverable, DeliverableStatus } from "../types/deliverable";
-import type { Database } from "../types/database";
 
 /**
  * Phase 2B data layer — the ONLY place raw Supabase queries live.
@@ -62,48 +63,6 @@ export interface DeliverableInput {
 }
 
 export type DeliverablePatch = Partial<DeliverableInput>;
-
-/*
- * The live generated Database intentionally does not contain the pending
- * Phase 2C table. Keep this narrow migration-aligned extension at the data
- * boundary rather than hand-editing src/types/database.ts. Once the migration
- * is approved and applied, regenerate Database and remove this extension.
- */
-type DeliverablesTable = {
-  Row: Deliverable & Record<string, unknown>;
-  Insert: Omit<Deliverable, "id" | "created_at" | "updated_at"> & {
-    id?: string;
-    created_at?: string;
-    updated_at?: string;
-  } & Record<string, unknown>;
-  Update: Partial<Deliverable> & Record<string, unknown>;
-  Relationships: [
-    {
-      foreignKeyName: "deliverables_project_id_workspace_id_fkey";
-      columns: ["project_id", "workspace_id"];
-      isOneToOne: false;
-      referencedRelation: "projects";
-      referencedColumns: ["id", "workspace_id"];
-    },
-    {
-      foreignKeyName: "deliverables_workspace_id_fkey";
-      columns: ["workspace_id"];
-      isOneToOne: false;
-      referencedRelation: "workspaces";
-      referencedColumns: ["id"];
-    },
-  ];
-};
-
-type DatabaseWithDeliverables = Omit<Database, "public"> & {
-  public: Omit<Database["public"], "Tables"> & {
-    Tables: Database["public"]["Tables"] & { deliverables: DeliverablesTable };
-  };
-};
-
-function deliverablesClient(): SupabaseClient<DatabaseWithDeliverables> | null {
-  return supabase as SupabaseClient<DatabaseWithDeliverables> | null;
-}
 
 function logDeliverableError(operation: string, error: PostgrestError): void {
   console.error(`[deliverables] ${operation} failed`, {
@@ -347,10 +306,9 @@ export async function fetchDeliverables(
   projectId: string,
   includeArchived = false,
 ): Promise<ListResult<Deliverable>> {
-  const client = deliverablesClient();
-  if (!client) return { data: null, error: NOT_CONFIGURED };
+  if (!supabase) return { data: null, error: NOT_CONFIGURED };
 
-  let query = client
+  let query = supabase
     .from("deliverables")
     .select("*")
     .eq("workspace_id", workspaceId)
@@ -364,7 +322,7 @@ export async function fetchDeliverables(
     logDeliverableError("fetch", error);
     return { data: null, error: describeError(error) };
   }
-  return { data: data ?? [], error: null };
+  return { data: (data ?? []) as Deliverable[], error: null };
 }
 
 export async function createDeliverable(
@@ -373,9 +331,8 @@ export async function createDeliverable(
   userId: string,
   input: DeliverableInput,
 ): Promise<RowResult<Deliverable>> {
-  const client = deliverablesClient();
-  if (!client) return notConfigured();
-  const { data, error } = await client
+  if (!supabase) return notConfigured();
+  const { data, error } = await supabase
     .from("deliverables")
     .insert({
       workspace_id: workspaceId,
@@ -394,7 +351,7 @@ export async function createDeliverable(
     logDeliverableError("create", error);
     return { data: null, error: describeError(error) };
   }
-  return { data, error: null };
+  return { data: data as Deliverable, error: null };
 }
 
 export async function updateDeliverable(
@@ -402,8 +359,7 @@ export async function updateDeliverable(
   deliverableId: string,
   patch: DeliverablePatch,
 ): Promise<RowResult<Deliverable>> {
-  const client = deliverablesClient();
-  if (!client) return notConfigured();
+  if (!supabase) return notConfigured();
 
   // Never accept workspace_id, project_id, created_by, or timestamps from UI.
   const changes: DeliverablePatch = {};
@@ -413,7 +369,7 @@ export async function updateDeliverable(
   if (patch.external_url !== undefined) changes.external_url = patch.external_url;
   if (patch.version !== undefined) changes.version = patch.version;
 
-  const { data, error } = await client
+  const { data, error } = await supabase
     .from("deliverables")
     .update(changes)
     .eq("id", deliverableId)
@@ -430,7 +386,7 @@ export async function updateDeliverable(
       error: "No deliverable was updated — it may be gone, or your role can't modify it.",
     };
   }
-  return { data, error: null };
+  return { data: data as Deliverable, error: null };
 }
 
 export async function setDeliverableStatus(
@@ -446,9 +402,8 @@ export async function setDeliverableArchived(
   deliverableId: string,
   archived: boolean,
 ): Promise<RowResult<Deliverable>> {
-  const client = deliverablesClient();
-  if (!client) return notConfigured();
-  const { data, error } = await client
+  if (!supabase) return notConfigured();
+  const { data, error } = await supabase
     .from("deliverables")
     .update({ archived_at: archived ? new Date().toISOString() : null })
     .eq("id", deliverableId)
@@ -465,16 +420,15 @@ export async function setDeliverableArchived(
       error: "No deliverable was updated — it may be gone, or your role can't modify it.",
     };
   }
-  return { data, error: null };
+  return { data: data as Deliverable, error: null };
 }
 
 export async function deleteDeliverable(
   workspaceId: string,
   deliverableId: string,
 ): Promise<DeleteResult> {
-  const client = deliverablesClient();
-  if (!client) return { error: NOT_CONFIGURED };
-  const { data, error } = await client
+  if (!supabase) return { error: NOT_CONFIGURED };
+  const { data, error } = await supabase
     .from("deliverables")
     .delete()
     .eq("id", deliverableId)
@@ -641,12 +595,7 @@ export const PROJECT_STATUSES: ProjectStatus[] = [
 
 export const CLIENT_STATUSES: ClientStatus[] = ["active", "archived"];
 
-export const DELIVERABLE_STATUS_ORDER: DeliverableStatus[] = [
-  "draft",
-  "ready_for_review",
-  "changes_requested",
-  "approved",
-];
+export const DELIVERABLE_STATUS_ORDER: DeliverableStatus[] = [...DELIVERABLE_STATUSES];
 
 export function formatDate(iso: string | null | undefined): string | null {
   if (!iso) return null;
