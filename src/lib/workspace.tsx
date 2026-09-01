@@ -163,16 +163,14 @@ async function loadOrCreateWorkspace(
   // 3) First login — create exactly one workspace. The database trigger
   //    `workspaces_owner_membership` (SECURITY DEFINER) adds the owner
   //    membership row; we NEVER insert into workspace_members ourselves.
-  //    maybeSingle on the returning row: PostgREST applies the SELECT policy
-  //    to RETURNING, so a filtered row must not be treated as a hard failure
-  //    — step 4 verifies what actually exists.
-  const { data: created, error: createError } = await supabase
+  //    Do not request a returned row here. The SELECT policy grants workspace
+  //    visibility through the owner membership created by this AFTER INSERT
+  //    trigger. A returned representation can therefore turn a successful
+  //    insert into an RLS error before that membership is visible. Step 4
+  //    resolves the trigger-created membership instead.
+  const { error: createError } = await supabase
     .from("workspaces")
-    .insert({ name: DEFAULT_WORKSPACE_NAME, owner_id: userId })
-    .select("*")
-    .maybeSingle();
-
-  if (!createError && created) return { workspace: created, role: "owner" };
+    .insert({ name: DEFAULT_WORKSPACE_NAME, owner_id: userId });
 
   if (createError) logBootstrapFailure("workspace insert failed:", createError);
 
