@@ -11,7 +11,7 @@
     3. outsider cannot read a deliverable
     4. member can read and update in their workspace
     5. member cannot delete
-    6. workspace_id and created_by are immutable on update
+    6. workspace_id, project_id, and created_by are immutable on update
 */
 
 begin;
@@ -122,11 +122,11 @@ begin
   raise notice 'PASS (5): member cannot delete deliverable';
 end $$;
 
-/* 6. existing immutable-field guards reject tenancy/audit tampering. */
+/* 6. immutable-field guards reject tenancy/audit tampering. */
 do $$
-declare v_id uuid; v_workspace_b uuid;
+declare v_id uuid; v_workspace_b uuid; v_project_b uuid;
 begin
-  select deliverable_a, workspace_b into v_id, v_workspace_b from phase2c_ids;
+  select deliverable_a, workspace_b, project_b into v_id, v_workspace_b, v_project_b from phase2c_ids;
   begin
     update public.deliverables set workspace_id = v_workspace_b where id = v_id;
     raise exception 'FAIL (6a): workspace_id changed';
@@ -138,6 +138,12 @@ begin
     raise exception 'FAIL (6b): created_by changed';
   exception when raise_exception then
     raise notice 'PASS (6b): created_by is immutable';
+  end;
+  begin
+    update public.deliverables set project_id = v_project_b where id = v_id;
+    raise exception 'FAIL (6c): project_id changed';
+  exception when raise_exception then
+    raise notice 'PASS (6c): project_id is immutable';
   end;
 end $$;
 
