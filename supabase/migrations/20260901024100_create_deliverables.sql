@@ -1,8 +1,8 @@
 /*
   Phase 2C — Deliverables + approval workflow
 
-  This migration is intentionally NOT applied by this branch. It preserves the
-  Phase 2A tenancy model: every deliverable belongs to one workspace and its
+  This migration preserves the Phase 2A tenancy model: every deliverable
+  belongs to one workspace and its
   project must belong to that same workspace.
 */
 
@@ -64,6 +64,24 @@ create trigger deliverables_guard_workspace_id
 create trigger deliverables_guard_created_by
   before update on public.deliverables
   for each row execute function public.guard_created_by();
+
+/* A deliverable cannot be moved to a different project after creation. */
+create function public.guard_deliverable_project_id()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.project_id is distinct from old.project_id then
+    raise exception 'project_id is immutable. Deliverables cannot be moved between projects.';
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger deliverables_guard_project_id
+  before update on public.deliverables
+  for each row execute function public.guard_deliverable_project_id();
 
 /* Match existing client/project access. No anon privilege is granted. */
 grant select, insert, update, delete on public.deliverables to authenticated;
