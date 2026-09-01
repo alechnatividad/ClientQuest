@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { PostgrestError } from "@supabase/supabase-js";
+import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import type {
   Client,
@@ -7,6 +7,8 @@ import type {
   Project,
   ProjectStatus,
 } from "../types/app";
+import type { Deliverable, DeliverableStatus } from "../types/deliverable";
+import type { Database } from "../types/database";
 
 /**
  * Phase 2B data layer — the ONLY place raw Supabase queries live.
@@ -50,6 +52,67 @@ export interface ProjectInput {
 }
 
 export type ProjectPatch = Partial<ProjectInput>;
+
+export interface DeliverableInput {
+  title: string;
+  description: string | null;
+  status: DeliverableStatus;
+  external_url: string | null;
+  version: number;
+}
+
+export type DeliverablePatch = Partial<DeliverableInput>;
+
+/*
+ * The live generated Database intentionally does not contain the pending
+ * Phase 2C table. Keep this narrow migration-aligned extension at the data
+ * boundary rather than hand-editing src/types/database.ts. Once the migration
+ * is approved and applied, regenerate Database and remove this extension.
+ */
+type DeliverablesTable = {
+  Row: Deliverable & Record<string, unknown>;
+  Insert: Omit<Deliverable, "id" | "created_at" | "updated_at"> & {
+    id?: string;
+    created_at?: string;
+    updated_at?: string;
+  } & Record<string, unknown>;
+  Update: Partial<Deliverable> & Record<string, unknown>;
+  Relationships: [
+    {
+      foreignKeyName: "deliverables_project_id_workspace_id_fkey";
+      columns: ["project_id", "workspace_id"];
+      isOneToOne: false;
+      referencedRelation: "projects";
+      referencedColumns: ["id", "workspace_id"];
+    },
+    {
+      foreignKeyName: "deliverables_workspace_id_fkey";
+      columns: ["workspace_id"];
+      isOneToOne: false;
+      referencedRelation: "workspaces";
+      referencedColumns: ["id"];
+    },
+  ];
+};
+
+type DatabaseWithDeliverables = Omit<Database, "public"> & {
+  public: Omit<Database["public"], "Tables"> & {
+    Tables: Database["public"]["Tables"] & { deliverables: DeliverablesTable };
+  };
+};
+
+function deliverablesClient(): SupabaseClient<DatabaseWithDeliverables> | null {
+  return supabase as SupabaseClient<DatabaseWithDeliverables> | null;
+}
+
+function logDeliverableError(operation: string, error: PostgrestError): void {
+  console.error(`[deliverables] ${operation} failed`, {
+    code: error.code,
+    message: error.message,
+    details: error.details,
+    hint: error.hint,
+  });
+}
 
 /* ── error mapping ─────────────────────────────────────────────────────── */
 
@@ -277,6 +340,157 @@ export async function deleteProject(
   return { error: null };
 }
 
+/* ── deliverables ─────────────────────────────────────────────────────── */
+
+export async function fetchDeliverables(
+  workspaceId: string,
+  projectId: string,
+  includeArchived = false,
+): Promise<ListResult<Deliverable>> {
+  const client = deliverablesClient();
+  if (!client) return { data: null, error: NOT_CONFIGURED };
+
+  let query = client
+    .from("deliverables")
+    .select("*")
+    .eq("workspace_id", workspaceId)
+    .eq("project_id", projectId)
+    .order("updated_at", { ascending: false });
+
+  if (!includeArchived) query = query.is("archived_at", null);
+
+  const { data, error } = await query;
+  if (error) {
+    logDeliverableError("fetch", error);
+    return { data: null, error: describeError(error) };
+  }
+  return { data: data ?? [], error: null };
+}
+
+export async function createDeliverable(
+  workspaceId: string,
+  projectId: string,
+  userId: string,
+  input: DeliverableInput,
+): Promise<RowResult<Deliverable>> {
+  const client = deliverablesClient();
+  if (!client) return notConfigured();
+  const { data, error } = await client
+    .from("deliverables")
+    .insert({
+      workspace_id: workspaceId,
+      project_id: projectId,
+      created_by: userId,
+      title: input.title,
+      description: input.description,
+      status: input.status,
+      external_url: input.external_url,
+      version: input.version,
+      archived_at: null,
+    })
+    .select("*")
+    .single();
+  if (error) {
+    logDeliverableError("create", error);
+    return { data: null, error: describeError(error) };
+  }
+  return { data, error: null };
+}
+
+export async function updateDeliverable(
+  workspaceId: string,
+  deliverableId: string,
+  patch: DeliverablePatch,
+): Promise<RowResult<Deliverable>> {
+  const client = deliverablesClient();
+  if (!client) return notConfigured();
+
+  // Never accept workspace_id, project_id, created_by, or timestamps from UI.
+  const changes: DeliverablePatch = {};
+  if (patch.title !== undefined) changes.title = patch.title;
+  if (patch.description !== undefined) changes.description = patch.description;
+  if (patch.status !== undefined) changes.status = patch.status;
+  if (patch.external_url !== undefined) changes.external_url = patch.external_url;
+  if (patch.version !== undefined) changes.version = patch.version;
+
+  const { data, error } = await client
+    .from("deliverables")
+    .update(changes)
+    .eq("id", deliverableId)
+    .eq("workspace_id", workspaceId)
+    .select("*")
+    .maybeSingle();
+  if (error) {
+    logDeliverableError("update", error);
+    return { data: null, error: describeError(error) };
+  }
+  if (!data) {
+    return {
+      data: null,
+      error: "No deliverable was updated — it may be gone, or your role can't modify it.",
+    };
+  }
+  return { data, error: null };
+}
+
+export async function setDeliverableStatus(
+  workspaceId: string,
+  deliverableId: string,
+  status: DeliverableStatus,
+): Promise<RowResult<Deliverable>> {
+  return updateDeliverable(workspaceId, deliverableId, { status });
+}
+
+export async function setDeliverableArchived(
+  workspaceId: string,
+  deliverableId: string,
+  archived: boolean,
+): Promise<RowResult<Deliverable>> {
+  const client = deliverablesClient();
+  if (!client) return notConfigured();
+  const { data, error } = await client
+    .from("deliverables")
+    .update({ archived_at: archived ? new Date().toISOString() : null })
+    .eq("id", deliverableId)
+    .eq("workspace_id", workspaceId)
+    .select("*")
+    .maybeSingle();
+  if (error) {
+    logDeliverableError("archive", error);
+    return { data: null, error: describeError(error) };
+  }
+  if (!data) {
+    return {
+      data: null,
+      error: "No deliverable was updated — it may be gone, or your role can't modify it.",
+    };
+  }
+  return { data, error: null };
+}
+
+export async function deleteDeliverable(
+  workspaceId: string,
+  deliverableId: string,
+): Promise<DeleteResult> {
+  const client = deliverablesClient();
+  if (!client) return { error: NOT_CONFIGURED };
+  const { data, error } = await client
+    .from("deliverables")
+    .delete()
+    .eq("id", deliverableId)
+    .eq("workspace_id", workspaceId)
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    logDeliverableError("delete", error);
+    return { error: describeError(error) };
+  }
+  if (!data) {
+    return { error: "No deliverable was deleted — only workspace owners and admins can delete deliverables." };
+  }
+  return { error: null };
+}
+
 /* ── hooks ─────────────────────────────────────────────────────────────── */
 
 interface ListHook<T> {
@@ -331,6 +545,42 @@ export function useClients(workspaceId: string | null): ListHook<Client> {
 /** All projects in the active workspace, newest first. */
 export function useProjects(workspaceId: string | null): ListHook<Project> {
   return useWorkspaceList(workspaceId, stableFetchProjects);
+}
+
+/** Deliverables for one project in the active workspace, newest activity first. */
+export function useDeliverables(
+  workspaceId: string | null,
+  projectId: string | undefined,
+  includeArchived = false,
+): ListHook<Deliverable> {
+  const [rows, setRows] = useState<Deliverable[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [nonce, setNonce] = useState(0);
+
+  useEffect(() => {
+    if (!workspaceId || !projectId) {
+      setRows([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+    let live = true;
+    setLoading(true);
+    setError(null);
+    fetchDeliverables(workspaceId, projectId, includeArchived).then((res) => {
+      if (!live) return;
+      setRows(res.data ?? []);
+      setError(res.error);
+      setLoading(false);
+    });
+    return () => {
+      live = false;
+    };
+  }, [workspaceId, projectId, includeArchived, nonce]);
+
+  const refresh = useCallback(() => setNonce((n) => n + 1), []);
+  return { rows, loading, error, refresh };
 }
 
 interface ProjectHook {
@@ -390,6 +640,13 @@ export const PROJECT_STATUSES: ProjectStatus[] = [
 ];
 
 export const CLIENT_STATUSES: ClientStatus[] = ["active", "archived"];
+
+export const DELIVERABLE_STATUS_ORDER: DeliverableStatus[] = [
+  "draft",
+  "ready_for_review",
+  "changes_requested",
+  "approved",
+];
 
 export function formatDate(iso: string | null | undefined): string | null {
   if (!iso) return null;

@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { AlertTriangle, Gem, RefreshCw, X, type LucideIcon } from "lucide-react";
 import type { ClientStatus, ProjectStatus } from "../../types/app";
+import type { DeliverableStatus } from "../../types/deliverable";
 
 /* ── shared class recipes (match the existing app shell look) ──────────── */
 
@@ -34,6 +35,13 @@ export const CLIENT_STATUS_META: Record<ClientStatus, { label: string; pill: str
   archived: { label: "Archived", pill: "border-slate-700 bg-slate-800/60 text-slate-500", dot: "bg-slate-600" },
 };
 
+export const DELIVERABLE_STATUS_META: Record<DeliverableStatus, { label: string; pill: string; dot: string }> = {
+  draft: { label: "Draft", pill: "border-slate-600/60 bg-slate-700/20 text-slate-300", dot: "bg-slate-400" },
+  ready_for_review: { label: "Ready for review", pill: "border-violet-400/30 bg-quest/15 text-violet-300", dot: "bg-[#8B5CF6]" },
+  changes_requested: { label: "Changes requested", pill: "border-amber-400/30 bg-amber-400/10 text-[#F59E0B]", dot: "bg-[#F59E0B]" },
+  approved: { label: "Approved", pill: "border-emerald-400/30 bg-emerald-400/10 text-[#10B981]", dot: "bg-[#10B981]" },
+};
+
 export function ProjectStatusPill({ status }: { status: ProjectStatus }) {
   const meta = PROJECT_STATUS_META[status];
   return (
@@ -46,6 +54,16 @@ export function ProjectStatusPill({ status }: { status: ProjectStatus }) {
 
 export function ClientStatusPill({ status }: { status: ClientStatus }) {
   const meta = CLIENT_STATUS_META[status];
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold ${meta.pill}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
+      {meta.label}
+    </span>
+  );
+}
+
+export function DeliverableStatusPill({ status }: { status: DeliverableStatus }) {
+  const meta = DELIVERABLE_STATUS_META[status];
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold ${meta.pill}`}>
       <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
