@@ -1,7 +1,6 @@
 import { useEffect, type ReactNode } from "react";
 import { AlertTriangle, Gem, RefreshCw, X, type LucideIcon } from "lucide-react";
-import type { ClientStatus, ProjectStatus } from "../../types/app";
-import type { DeliverableStatus } from "../../types/deliverable";
+import type { ClientStatus, DeliverableStatus, ProjectStatus } from "../../types/app";
 
 /* ── shared class recipes (match the existing app shell look) ──────────── */
 
