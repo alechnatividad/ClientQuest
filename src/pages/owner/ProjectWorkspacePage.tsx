@@ -39,7 +39,7 @@ import {
 } from "../../lib/repo";
 import ProjectForm from "../../components/app/ProjectForm";
 import DeliverableForm from "../../components/app/DeliverableForm";
-import type { Deliverable, DeliverableStatus } from "../../types/deliverable";
+import type { Deliverable, DeliverableStatus } from "../../types/app";
 import {
   ErrorPanel,
   ConfirmDialog,
