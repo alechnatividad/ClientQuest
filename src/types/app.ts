@@ -9,6 +9,15 @@ import type { Tables } from "./database";
 export type Workspace = Tables<"workspaces">;
 export type Client = Tables<"clients">;
 export type Project = Tables<"projects">;
+export const DELIVERABLE_STATUSES = [
+  "draft",
+  "ready_for_review",
+  "changes_requested",
+  "approved",
+] as const;
+export type DeliverableStatus = (typeof DELIVERABLE_STATUSES)[number];
+/** Generated database row with the database-enforced status model narrowed for UI use. */
+export type Deliverable = Omit<Tables<"deliverables">, "status"> & { status: DeliverableStatus };
 
 export type WorkspaceMemberRole = Tables<"workspace_members">["role"];
 export type ClientStatus = Client["status"];
