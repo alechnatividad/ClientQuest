@@ -61,6 +61,75 @@ export type Database = {
           },
         ]
       }
+      deliverable_approval_events: {
+        Row: {
+          action: string
+          client_id: string
+          created_at: string
+          deliverable_id: string
+          id: string
+          portal_link_id: string
+          project_id: string
+          workspace_id: string
+        }
+        Insert: {
+          action: string
+          client_id: string
+          created_at?: string
+          deliverable_id: string
+          id?: string
+          portal_link_id: string
+          project_id: string
+          workspace_id: string
+        }
+        Update: {
+          action?: string
+          client_id?: string
+          created_at?: string
+          deliverable_id?: string
+          id?: string
+          portal_link_id?: string
+          project_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deliverable_approval_events_client_id_workspace_id_fkey"
+            columns: ["client_id", "workspace_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id", "workspace_id"]
+          },
+          {
+            foreignKeyName: "deliverable_approval_events_deliverable_id_fkey"
+            columns: ["deliverable_id"]
+            isOneToOne: false
+            referencedRelation: "deliverables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deliverable_approval_events_portal_link_id_fkey"
+            columns: ["portal_link_id"]
+            isOneToOne: false
+            referencedRelation: "project_portal_links"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deliverable_approval_events_project_id_workspace_id_fkey"
+            columns: ["project_id", "workspace_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id", "workspace_id"]
+          },
+          {
+            foreignKeyName: "deliverable_approval_events_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       deliverables: {
         Row: {
           archived_at: string | null
@@ -114,6 +183,61 @@ export type Database = {
           },
           {
             foreignKeyName: "deliverables_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_portal_links: {
+        Row: {
+          client_id: string
+          created_at: string
+          created_by: string
+          id: string
+          project_id: string
+          revoked_at: string | null
+          token_hash: string
+          workspace_id: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          project_id: string
+          revoked_at?: string | null
+          token_hash: string
+          workspace_id: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          project_id?: string
+          revoked_at?: string | null
+          token_hash?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_portal_links_client_id_workspace_id_fkey"
+            columns: ["client_id", "workspace_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id", "workspace_id"]
+          },
+          {
+            foreignKeyName: "project_portal_links_project_id_workspace_id_fkey"
+            columns: ["project_id", "workspace_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id", "workspace_id"]
+          },
+          {
+            foreignKeyName: "project_portal_links_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
@@ -237,8 +361,22 @@ export type Database = {
     }
     Functions: {
       can_manage_workspace: { Args: { workspace_id: string }; Returns: boolean }
+      create_project_portal_link: {
+        Args: { p_project_id: string }
+        Returns: Json
+      }
+      get_client_portal: { Args: { p_token: string }; Returns: Json }
+      get_project_portal_link: { Args: { p_project_id: string }; Returns: Json }
       is_workspace_member: { Args: { workspace_id: string }; Returns: boolean }
       is_workspace_owner: { Args: { workspace_id: string }; Returns: boolean }
+      revoke_project_portal_link: {
+        Args: { p_portal_link_id: string }
+        Returns: undefined
+      }
+      submit_client_deliverable_decision: {
+        Args: { p_action: string; p_deliverable_id: string; p_token: string }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never

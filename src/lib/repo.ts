@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
+import type { PostgrestError } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
-import type { Database, Json } from "../types/database";
 import { DELIVERABLE_STATUSES } from "../types/app";
 import type {
   Client,
@@ -83,23 +82,6 @@ function logPortalError(operation: string, error: PostgrestError): void {
   });
 }
 
-/* Phase 3 RPCs are deliberately isolated from generated table types until the
-   reviewed migration is applied and the live schema can be regenerated. */
-type PortalRpcDatabase = Omit<Database, "public"> & {
-  public: Omit<Database["public"], "Functions"> & {
-    Functions: Database["public"]["Functions"] & {
-      create_project_portal_link: { Args: { p_project_id: string }; Returns: Json };
-      get_project_portal_link: { Args: { p_project_id: string }; Returns: Json };
-      revoke_project_portal_link: { Args: { p_portal_link_id: string }; Returns: null };
-      get_client_portal: { Args: { p_token: string }; Returns: Json };
-      submit_client_deliverable_decision: {
-        Args: { p_token: string; p_deliverable_id: string; p_action: ClientDeliverableDecision };
-        Returns: Json;
-      };
-    };
-  };
-};
-
 type PortalLink = { id: string; project_id: string; client_id: string; created_at: string };
 export type CreatedPortalLink = Pick<PortalLink, "id" | "created_at"> & { token: string };
 export type ClientDeliverableDecision = "approved" | "changes_requested";
@@ -118,9 +100,6 @@ export interface ClientPortalData {
   deliverables: ClientPortalDeliverable[];
 }
 
-function portalClient(): SupabaseClient<PortalRpcDatabase> | null {
-  return supabase as unknown as SupabaseClient<PortalRpcDatabase> | null;
-}
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
@@ -521,7 +500,7 @@ export async function deleteDeliverable(
 /* ── Phase 3 client portal ─────────────────────────────────────────────── */
 
 export async function createProjectPortalLink(projectId: string): Promise<RowResult<CreatedPortalLink>> {
-  const client = portalClient();
+  const client = supabase;
   if (!client) return notConfigured();
   const { data, error } = await client.rpc("create_project_portal_link", { p_project_id: projectId });
   if (error) {
@@ -537,7 +516,7 @@ export async function createProjectPortalLink(projectId: string): Promise<RowRes
 }
 
 export async function fetchProjectPortalLink(projectId: string): Promise<RowResult<PortalLink | null>> {
-  const client = portalClient();
+  const client = supabase;
   if (!client) return notConfigured();
   const { data, error } = await client.rpc("get_project_portal_link", { p_project_id: projectId });
   if (error) {
@@ -554,7 +533,7 @@ export async function fetchProjectPortalLink(projectId: string): Promise<RowResu
 }
 
 export async function revokeProjectPortalLink(portalLinkId: string): Promise<DeleteResult> {
-  const client = portalClient();
+  const client = supabase;
   if (!client) return { error: NOT_CONFIGURED };
   const { error } = await client.rpc("revoke_project_portal_link", { p_portal_link_id: portalLinkId });
   if (error) {
@@ -567,7 +546,7 @@ export async function revokeProjectPortalLink(portalLinkId: string): Promise<Del
 export interface ClientPortalLookup { data: ClientPortalData | null; error: string | null; }
 
 export async function fetchClientPortal(token: string): Promise<ClientPortalLookup> {
-  const client = portalClient();
+  const client = supabase;
   if (!client) return { data: null, error: NOT_CONFIGURED };
   const { data, error } = await client.rpc("get_client_portal", { p_token: token });
   if (error) {
@@ -588,7 +567,7 @@ export async function submitClientDeliverableDecision(
   deliverableId: string,
   action: ClientDeliverableDecision,
 ): Promise<RowResult<{ id: string; status: ClientDeliverableDecision; updated_at: string }>> {
-  const client = portalClient();
+  const client = supabase;
   if (!client) return notConfigured();
   const { data, error } = await client.rpc("submit_client_deliverable_decision", {
     p_token: token, p_deliverable_id: deliverableId, p_action: action,
