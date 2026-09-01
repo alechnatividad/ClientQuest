@@ -39,6 +39,7 @@ import {
 } from "../../lib/repo";
 import ProjectForm from "../../components/app/ProjectForm";
 import DeliverableForm from "../../components/app/DeliverableForm";
+import ProjectPortalLinkPanel from "../../components/app/ProjectPortalLinkPanel";
 import type { Deliverable, DeliverableStatus } from "../../types/app";
 import {
   ErrorPanel,
@@ -333,9 +334,10 @@ export default function ProjectWorkspacePage() {
           <div className="rounded-2xl border border-dashed border-slate-700/60 bg-slate-900/30 p-5">
             <p className="text-[13px] leading-relaxed text-slate-500">
               Use the deliverables section below to prepare work, request review, track changes and record approval.
-              Comments, file uploads and client portal authentication remain outside this phase.
+              Client review links are limited to this project's attached client.
             </p>
           </div>
+          <ProjectPortalLinkPanel project={project} canManage={canManageDeliverables} />
         </section>
       </div>
 

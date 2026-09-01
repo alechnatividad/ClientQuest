@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import type { PostgrestError } from "@supabase/supabase-js";
+import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
+import type { Database, Json } from "../types/database";
 import { DELIVERABLE_STATUSES } from "../types/app";
 import type {
   Client,
@@ -71,6 +72,78 @@ function logDeliverableError(operation: string, error: PostgrestError): void {
     details: error.details,
     hint: error.hint,
   });
+}
+
+function logPortalError(operation: string, error: PostgrestError): void {
+  console.error(`[client-portal] ${operation} failed`, {
+    code: error.code,
+    message: error.message,
+    details: error.details,
+    hint: error.hint,
+  });
+}
+
+/* Phase 3 RPCs are deliberately isolated from generated table types until the
+   reviewed migration is applied and the live schema can be regenerated. */
+type PortalRpcDatabase = Omit<Database, "public"> & {
+  public: Omit<Database["public"], "Functions"> & {
+    Functions: Database["public"]["Functions"] & {
+      create_project_portal_link: { Args: { p_project_id: string }; Returns: Json };
+      get_project_portal_link: { Args: { p_project_id: string }; Returns: Json };
+      revoke_project_portal_link: { Args: { p_portal_link_id: string }; Returns: null };
+      get_client_portal: { Args: { p_token: string }; Returns: Json };
+      submit_client_deliverable_decision: {
+        Args: { p_token: string; p_deliverable_id: string; p_action: ClientDeliverableDecision };
+        Returns: Json;
+      };
+    };
+  };
+};
+
+type PortalLink = { id: string; project_id: string; client_id: string; created_at: string };
+export type CreatedPortalLink = Pick<PortalLink, "id" | "created_at"> & { token: string };
+export type ClientDeliverableDecision = "approved" | "changes_requested";
+export interface ClientPortalDeliverable {
+  id: string;
+  title: string;
+  description: string | null;
+  status: Extract<DeliverableStatus, "ready_for_review" | ClientDeliverableDecision>;
+  external_url: string | null;
+  version: number;
+  updated_at: string;
+}
+export interface ClientPortalData {
+  project: { id: string; name: string; description: string | null };
+  client: { name: string; company: string | null };
+  deliverables: ClientPortalDeliverable[];
+}
+
+function portalClient(): SupabaseClient<PortalRpcDatabase> | null {
+  return supabase as unknown as SupabaseClient<PortalRpcDatabase> | null;
+}
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+function asString(value: unknown): string | null { return typeof value === "string" ? value : null; }
+function readPortalLink(value: unknown, includeToken = false): PortalLink | CreatedPortalLink | null {
+  const row = asRecord(value); const id = asString(row?.id); const createdAt = asString(row?.created_at);
+  if (!id || !createdAt) return null;
+  if (includeToken) { const token = asString(row?.token); return token && /^[0-9a-f]{64}$/.test(token) ? { id, created_at: createdAt, token } : null; }
+  const projectId = asString(row?.project_id); const clientId = asString(row?.client_id);
+  return projectId && clientId ? { id, project_id: projectId, client_id: clientId, created_at: createdAt } : null;
+}
+function readClientPortal(value: unknown): ClientPortalData | null {
+  const root = asRecord(value); const project = asRecord(root?.project); const client = asRecord(root?.client);
+  if (!project || !client || !Array.isArray(root?.deliverables)) return null;
+  const projectId = asString(project.id); const projectName = asString(project.name); const clientName = asString(client.name);
+  if (!projectId || !projectName || !clientName) return null;
+  const deliverables: ClientPortalDeliverable[] = [];
+  for (const value of root.deliverables) {
+    const row = asRecord(value); const id = asString(row?.id); const title = asString(row?.title); const status = asString(row?.status); const updatedAt = asString(row?.updated_at);
+    if (!id || !title || !updatedAt || !["ready_for_review", "changes_requested", "approved"].includes(status ?? "")) return null;
+    deliverables.push({ id, title, description: asString(row?.description), status: status as ClientPortalDeliverable["status"], external_url: asString(row?.external_url), version: typeof row?.version === "number" ? row.version : 1, updated_at: updatedAt });
+  }
+  return { project: { id: projectId, name: projectName, description: asString(project.description) }, client: { name: clientName, company: asString(client.company) }, deliverables };
 }
 
 /* ── error mapping ─────────────────────────────────────────────────────── */
@@ -443,6 +516,92 @@ export async function deleteDeliverable(
     return { error: "No deliverable was deleted — only workspace owners and admins can delete deliverables." };
   }
   return { error: null };
+}
+
+/* ── Phase 3 client portal ─────────────────────────────────────────────── */
+
+export async function createProjectPortalLink(projectId: string): Promise<RowResult<CreatedPortalLink>> {
+  const client = portalClient();
+  if (!client) return notConfigured();
+  const { data, error } = await client.rpc("create_project_portal_link", { p_project_id: projectId });
+  if (error) {
+    logPortalError("create link", error);
+    return { data: null, error: describeError(error) };
+  }
+  const link = readPortalLink(data, true);
+  if (!link || !("token" in link)) {
+    console.error("[client-portal] create link returned an invalid response", data);
+    return { data: null, error: "The portal link could not be created. Please try again." };
+  }
+  return { data: link, error: null };
+}
+
+export async function fetchProjectPortalLink(projectId: string): Promise<RowResult<PortalLink | null>> {
+  const client = portalClient();
+  if (!client) return notConfigured();
+  const { data, error } = await client.rpc("get_project_portal_link", { p_project_id: projectId });
+  if (error) {
+    logPortalError("get link", error);
+    return { data: null, error: describeError(error) };
+  }
+  if (data === null) return { data: null, error: null };
+  const link = readPortalLink(data);
+  if (!link || "token" in link) {
+    console.error("[client-portal] get link returned an invalid response", data);
+    return { data: null, error: "The portal link could not be loaded. Please try again." };
+  }
+  return { data: link, error: null };
+}
+
+export async function revokeProjectPortalLink(portalLinkId: string): Promise<DeleteResult> {
+  const client = portalClient();
+  if (!client) return { error: NOT_CONFIGURED };
+  const { error } = await client.rpc("revoke_project_portal_link", { p_portal_link_id: portalLinkId });
+  if (error) {
+    logPortalError("revoke link", error);
+    return { error: describeError(error) };
+  }
+  return { error: null };
+}
+
+export interface ClientPortalLookup { data: ClientPortalData | null; error: string | null; }
+
+export async function fetchClientPortal(token: string): Promise<ClientPortalLookup> {
+  const client = portalClient();
+  if (!client) return { data: null, error: NOT_CONFIGURED };
+  const { data, error } = await client.rpc("get_client_portal", { p_token: token });
+  if (error) {
+    logPortalError("read portal", error);
+    return { data: null, error: "This secure link is unavailable. Ask your studio for a new link." };
+  }
+  if (data === null) return { data: null, error: null };
+  const portal = readClientPortal(data);
+  if (!portal) {
+    console.error("[client-portal] read portal returned an invalid response", data);
+    return { data: null, error: "This secure link is unavailable. Ask your studio for a new link." };
+  }
+  return { data: portal, error: null };
+}
+
+export async function submitClientDeliverableDecision(
+  token: string,
+  deliverableId: string,
+  action: ClientDeliverableDecision,
+): Promise<RowResult<{ id: string; status: ClientDeliverableDecision; updated_at: string }>> {
+  const client = portalClient();
+  if (!client) return notConfigured();
+  const { data, error } = await client.rpc("submit_client_deliverable_decision", {
+    p_token: token, p_deliverable_id: deliverableId, p_action: action,
+  });
+  if (error) {
+    logPortalError("submit decision", error);
+    return { data: null, error: "Your decision could not be saved. Please refresh and try again." };
+  }
+  const row = asRecord(data); const id = asString(row?.id); const status = asString(row?.status); const updatedAt = asString(row?.updated_at);
+  if (!id || !updatedAt || (status !== "approved" && status !== "changes_requested")) {
+    return { data: null, error: "This deliverable is no longer available for review. Please refresh the page." };
+  }
+  return { data: { id, status, updated_at: updatedAt }, error: null };
 }
 
 /* ── hooks ─────────────────────────────────────────────────────────────── */
