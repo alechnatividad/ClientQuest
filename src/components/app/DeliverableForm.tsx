@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import type { Deliverable, DeliverableStatus } from "../../types/deliverable";
+import type { Deliverable, DeliverableStatus } from "../../types/app";
 import { DELIVERABLE_STATUS_ORDER, type DeliverableInput } from "../../lib/repo";
 import {
   DELIVERABLE_STATUS_META,
