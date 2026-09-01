@@ -1,30 +1,39 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Gem, Link2, LockKeyhole } from "lucide-react";
+import { fetchClientPortal, type ClientPortalData } from "../lib/repo";
 import Portal from "../components/portal/Portal";
+import LiveClientPortal from "../components/portal/LiveClientPortal";
 
 /**
  * Passwordless client portal.
  *
  * - `/p/demo` renders the interactive product demo (no data, no backend).
- * - Any other token will validate against the portal_links table in Phase 2;
- *   until then we show an honest "not connected" state instead of faking it.
+ * - Any other token is resolved by the narrow Phase 3 portal RPC.
  */
 export default function ClientPortalPage() {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
   const [checking, setChecking] = useState(token !== "demo");
+  const [portal, setPortal] = useState<ClientPortalData | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (token === "demo") return;
-    // Brief verification beat so the state reads as a real lookup, not a 404.
-    const t = window.setTimeout(() => setChecking(false), 900);
-    return () => window.clearTimeout(t);
+    let active = true;
+    setChecking(true); setPortal(null); setError(null);
+    fetchClientPortal(token ?? "").then((result) => {
+      if (!active) return;
+      setPortal(result.data); setError(result.error); setChecking(false);
+    });
+    return () => { active = false; };
   }, [token]);
 
   if (token === "demo") {
     return <Portal onExit={() => navigate("/")} />;
   }
+
+  if (portal && token) return <LiveClientPortal initialPortal={portal} token={token} />;
 
   return (
     <div className="relative grid min-h-screen place-items-center overflow-hidden bg-slate-950 px-5 font-body text-slate-200 antialiased">
@@ -60,24 +69,11 @@ export default function ClientPortalPage() {
             <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-amber-400/30 bg-amber-400/10">
               <Link2 className="h-6 w-6 text-[#F59E0B]" />
             </span>
-            <h1 className="mt-5 font-display text-xl font-bold text-white">This link isn't connected yet</h1>
+            <h1 className="mt-5 font-display text-xl font-bold text-white">This secure link is unavailable</h1>
             <p className="mt-3 text-[15px] leading-relaxed text-slate-400">
-              Portal links are validated against your studio's project data, which arrives in Phase 2. The route is
-              live and your token was received:
-            </p>
-            <code className="mt-4 block truncate rounded-xl border border-slate-800 bg-slate-950/80 px-4 py-3 font-mono text-xs text-[#10B981]">
-              /p/{token}
-            </code>
-            <p className="mt-4 text-xs text-slate-600">
-              Want to see the client experience now? Open the interactive demo.
+              {error ?? "This link may have expired or been replaced. Ask your studio to send a new review link."}
             </p>
             <div className="mt-5 flex flex-wrap justify-center gap-3">
-              <Link
-                to="/p/demo"
-                className="rounded-full bg-[#8B5CF6] px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-600/30 transition-all duration-200 hover:-translate-y-0.5 hover:bg-violet-400"
-              >
-                Open demo portal
-              </Link>
               <Link
                 to="/"
                 className="inline-flex items-center gap-2 rounded-full border border-slate-700 px-6 py-2.5 text-sm font-semibold text-slate-300 transition-all duration-200 hover:border-slate-500 hover:text-white"
